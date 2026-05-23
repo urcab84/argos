@@ -1,0 +1,1638 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#f8fafc">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Argos Integraciones</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCoN9xIxLf0-ft20BkQBElHTkIkZ0OzqGY",
+  authDomain: "camiones-argos-integraciones.firebaseapp.com",
+  projectId: "camiones-argos-integraciones",
+  storageBucket: "camiones-argos-integraciones.firebasestorage.app",
+  messagingSenderId: "53777572189",
+  appId: "1:53777572189:web:2e5a74af819fff64f008b4"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const COLECCIONES = ['unidades','operadores','clientes','viajes','cobros','gastos','nominas','aportaciones','cortes'];
+
+async function sincronizarDesdeFirestore() {
+  const indicador = document.getElementById('sync-status');
+  if (indicador) { indicador.textContent = '☁ Sincronizando...'; indicador.style.color = '#d97706'; }
+  try {
+    for (const col of COLECCIONES) {
+      const snap = await db.collection(col).get();
+      const datos = snap.docs.map(d => d.data());
+      localStorage.setItem(col, JSON.stringify(datos));
+    }
+    if (indicador) { indicador.textContent = '☁ En línea'; indicador.style.color = '#16a34a'; }
+    if (window._renderApp) window._renderApp();
+  } catch(e) {
+    console.warn('Firebase no disponible, usando datos locales:', e.message);
+    if (indicador) { indicador.textContent = '⚠ Sin conexión'; indicador.style.color = '#dc2626'; }
+    if (window._renderApp) window._renderApp();
+  }
+}
+
+window._guardarEnFirestore = async function(coleccion, datos) {
+  const indicador = document.getElementById('sync-status');
+  try {
+    const batch = db.batch();
+    // Borrar existentes
+    const snap = await db.collection(coleccion).get();
+    snap.docs.forEach(d => batch.delete(d.ref));
+    // Escribir nuevos
+    datos.forEach(item => {
+      const ref = db.collection(coleccion).doc(item.id);
+      batch.set(ref, item);
+    });
+    await batch.commit();
+    if (indicador) { 
+      indicador.textContent = '☁ Guardado'; 
+      indicador.style.color = '#16a34a';
+      setTimeout(() => { if(indicador) indicador.textContent = '☁ En línea'; }, 2000);
+    }
+  } catch(e) {
+    console.warn('Error guardando en Firestore:', e.message);
+    if (indicador) { indicador.textContent = '⚠ Solo local'; indicador.style.color = '#dc2626'; }
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  sincronizarDesdeFirestore();
+});
+</script>
+<style>
+:root {
+  --bg: #f1f5f9;
+  --bg2: #ffffff;
+  --bg3: #f8fafc;
+  --bg4: #e2e8f0;
+  --border: #e2e8f0;
+  --border2: #cbd5e1;
+  --text: #0f172a;
+  --muted: #64748b;
+  --hint: #94a3b8;
+  --blue: #2563eb;
+  --blue-light: #dbeafe;
+  --blue-mid: #93c5fd;
+  --orange: #ea580c;
+  --orange-light: #ffedd5;
+  --orange-mid: #fdba74;
+  --green: #16a34a;
+  --green-light: #dcfce7;
+  --red: #dc2626;
+  --red-light: #fee2e2;
+  --amber: #d97706;
+  --amber-light: #fef3c7;
+  --purple: #7c3aed;
+  --purple-light: #ede9fe;
+  --uriel: #2563eb;
+  --kike: #ea580c;
+  --font: 'Plus Jakarta Sans', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --r: 12px;
+  --r-sm: 8px;
+  --r-lg: 16px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.05);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100dvh; }
+#app { display: flex; flex-direction: column; min-height: 100dvh; }
+
+/* ── Header ── */
+#header {
+  background: var(--bg2); border-bottom: 1px solid var(--border);
+  padding: 12px 16px 10px; position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  box-shadow: var(--shadow);
+}
+.header-logo { display: flex; align-items: center; gap: 10px; }
+.header-logo-mark {
+  width: 34px; height: 34px; background: var(--blue); border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+}
+.header-logo-mark svg { width: 20px; height: 20px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.header-title-wrap span:first-child { font-size: 16px; font-weight: 700; color: var(--text); display: block; }
+.header-title-wrap span:last-child { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+.btn-add {
+  background: var(--orange); color: white; border: none;
+  border-radius: var(--r-sm); padding: 8px 14px; font-family: var(--font);
+  font-size: 13px; font-weight: 600; cursor: pointer; display: flex;
+  align-items: center; gap: 5px; box-shadow: 0 1px 4px rgba(234,88,12,0.3);
+}
+.btn-add:active { opacity: 0.85; transform: scale(0.97); }
+
+#content { flex: 1; overflow-y: auto; padding-bottom: 76px; }
+
+/* ── Nav ── */
+#nav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--bg2); border-top: 1px solid var(--border);
+  display: flex; z-index: 100; box-shadow: 0 -1px 8px rgba(0,0,0,0.06);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.nav-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 3px; padding: 9px 4px 7px; background: none; border: none;
+  color: var(--hint); font-family: var(--font); font-size: 10px;
+  font-weight: 500; cursor: pointer; transition: color 0.15s; position: relative;
+}
+.nav-btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.nav-btn.active { color: var(--blue); }
+.nav-btn.active::after {
+  content: ''; position: absolute; bottom: 0; left: 25%; right: 25%;
+  height: 2px; background: var(--blue); border-radius: 2px 2px 0 0;
+}
+
+/* ── Cards ── */
+.section { padding: 14px 14px 0; }
+.section-title { font-size: 11px; font-family: var(--mono); color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 10px; }
+.card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow);
+}
+.card-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 7px; }
+.card-row:last-child { margin-bottom: 0; }
+.card-label { font-size: 12px; color: var(--muted); }
+.card-val { font-size: 13px; font-weight: 600; font-family: var(--mono); }
+.card-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+
+/* ── Badges ── */
+.badge { font-size: 10px; font-family: var(--mono); padding: 2px 8px; border-radius: 99px; font-weight: 600; white-space: nowrap; }
+.badge-green { background: var(--green-light); color: var(--green); }
+.badge-amber { background: var(--amber-light); color: var(--amber); }
+.badge-red { background: var(--red-light); color: var(--red); }
+.badge-blue { background: var(--blue-light); color: var(--blue); }
+.badge-orange { background: var(--orange-light); color: var(--orange); }
+
+/* ── Owner chips ── */
+.chip-uriel { font-size: 11px; font-family: var(--mono); font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--blue-light); color: var(--uriel); }
+.chip-kike   { font-size: 11px; font-family: var(--mono); font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--orange-light); color: var(--kike); }
+.chip-caja   { font-size: 11px; font-family: var(--mono); font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--green-light); color: var(--green); }
+.chip-cliente{ font-size: 11px; font-family: var(--mono); font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--purple-light); color: var(--purple); }
+
+/* ── Stats ── */
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.stat-box { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 14px; box-shadow: var(--shadow); }
+.stat-label { font-size: 10px; font-family: var(--mono); color: var(--muted); margin-bottom: 6px; letter-spacing: 0.05em; }
+.stat-val { font-size: 21px; font-weight: 700; font-family: var(--mono); }
+.stat-val.blue { color: var(--blue); }
+.stat-val.green { color: var(--green); }
+.stat-val.red { color: var(--red); }
+.stat-val.amber { color: var(--amber); }
+.stat-val.orange { color: var(--orange); }
+
+/* ── Forms ── */
+.form-group { margin-bottom: 13px; }
+.form-label { font-size: 11px; color: var(--muted); font-family: var(--mono); font-weight: 500; margin-bottom: 5px; display: block; letter-spacing: 0.04em; }
+.form-input, .form-select, .form-textarea {
+  width: 100%; background: var(--bg3); border: 1.5px solid var(--border);
+  border-radius: var(--r-sm); color: var(--text); font-family: var(--font);
+  font-size: 15px; padding: 10px 12px; outline: none; transition: border-color 0.15s;
+  -webkit-appearance: none; appearance: none;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--blue); background: white; }
+.form-textarea { resize: none; min-height: 70px; }
+.form-select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* ── Buttons ── */
+.btn { width: 100%; padding: 13px; border-radius: var(--r); font-family: var(--font); font-size: 15px; font-weight: 600; border: none; cursor: pointer; transition: all 0.15s; }
+.btn-primary { background: var(--blue); color: white; box-shadow: 0 1px 4px rgba(37,99,235,0.3); }
+.btn-primary:active { opacity: 0.88; transform: scale(0.98); }
+.btn-orange { background: var(--orange); color: white; box-shadow: 0 1px 4px rgba(234,88,12,0.3); }
+.btn-ghost { background: var(--bg3); color: var(--text); border: 1.5px solid var(--border2); }
+.btn-ghost:active { background: var(--bg4); }
+.btn-danger { background: var(--red-light); color: var(--red); border: 1px solid #fca5a5; }
+.btn-sm { padding: 8px 16px; font-size: 13px; width: auto; }
+.divider { height: 1px; background: var(--border); margin: 12px 0; }
+
+/* ── Sheet ── */
+.sheet-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.5); z-index: 200; display: flex; flex-direction: column; justify-content: flex-end; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.sheet-overlay.open { opacity: 1; pointer-events: all; }
+.sheet { background: var(--bg2); border-radius: 20px 20px 0 0; padding: 0 0 env(safe-area-inset-bottom); max-height: 93dvh; overflow-y: auto; transform: translateY(100%); transition: transform 0.25s cubic-bezier(0.32,0.72,0,1); }
+.sheet-overlay.open .sheet { transform: translateY(0); }
+.sheet-handle { width: 36px; height: 4px; background: var(--border2); border-radius: 99px; margin: 12px auto 0; }
+.sheet-header { padding: 12px 16px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+.sheet-title { font-size: 16px; font-weight: 700; }
+.sheet-body { padding: 16px; }
+.sheet-close { background: var(--bg3); border: 1px solid var(--border); color: var(--muted); width: 28px; height: 28px; border-radius: 99px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+/* ── Tab strip ── */
+.tab-strip { display: flex; gap: 6px; padding: 14px 14px 0; overflow-x: auto; scrollbar-width: none; }
+.tab-strip::-webkit-scrollbar { display: none; }
+.tab-btn { flex-shrink: 0; padding: 7px 15px; border-radius: 99px; font-size: 13px; font-weight: 600; border: 1.5px solid var(--border2); background: var(--bg2); color: var(--muted); cursor: pointer; transition: all 0.15s; white-space: nowrap; font-family: var(--font); }
+.tab-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
+.tab-btn.active.orange { background: var(--orange); border-color: var(--orange); }
+
+/* ── Aportaciones ── */
+.apor-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+
+/* ── Empty ── */
+.empty { text-align: center; padding: 40px 24px; color: var(--muted); }
+.empty-icon { font-size: 32px; margin-bottom: 10px; opacity: 0.4; }
+.empty p { font-size: 14px; }
+
+/* ── Alert box ── */
+.alert { border-radius: var(--r-sm); padding: 10px 12px; font-size: 12px; margin-bottom: 12px; }
+.alert-red { background: var(--red-light); color: var(--red); border: 1px solid #fca5a5; }
+.alert-amber { background: var(--amber-light); color: var(--amber); border: 1px solid #fcd34d; }
+.alert-blue { background: var(--blue-light); color: var(--blue); border: 1px solid var(--blue-mid); }
+
+@keyframes fadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+.fade-in { animation: fadeUp 0.18s ease both; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <div class="header-logo">
+      <div class="header-logo-mark">
+        <svg viewBox="0 0 24 24"><path d="M1 3h15l3 5v3H1V3z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="18.5" r="2.5"/><path d="M19 11v7"/></svg>
+      </div>
+      <div class="header-title-wrap">
+        <span>Argos Integraciones</span>
+        <span id="header-sub">Cargando...</span>
+        <span id="sync-status" style="font-size:10px;color:var(--muted);font-family:var(--mono)">☁ Conectando...</span>
+      </div>
+    </div>
+    <button class="btn-add" id="btn-quick-add">
+      <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:white;fill:none;stroke-width:2.5;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Nuevo
+    </button>
+  </div>
+
+  <div id="content"></div>
+
+  <nav id="nav">
+    <button class="nav-btn active" data-view="dashboard">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      Inicio
+    </button>
+    <button class="nav-btn" data-view="viajes">
+      <svg viewBox="0 0 24 24"><path d="M1 3h15l3 5v3H1V3z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="18.5" r="2.5"/><path d="M19 11v7M10 17H6"/></svg>
+      Viajes
+    </button>
+    <button class="nav-btn" data-view="cobros">
+      <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+      Cobros
+    </button>
+    <button class="nav-btn" data-view="gastos">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/></svg>
+      Gastos
+    </button>
+    <button class="nav-btn" data-view="metricas">
+      <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-6"/></svg>
+      Métricas
+    </button>
+    <button class="nav-btn" data-view="cortes">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      Cortes
+    </button>
+    <button class="nav-btn" data-view="catalogos">
+      <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      Catálogos
+    </button>
+  </nav>
+</div>
+
+<div class="sheet-overlay" id="sheet-overlay">
+  <div class="sheet" id="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <span class="sheet-title" id="sheet-title"></span>
+      <button class="sheet-close" id="sheet-close">✕</button>
+    </div>
+    <div class="sheet-body" id="sheet-body"></div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// DB
+// ══════════════════════════════════════════════════════
+const DB = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)) || []; } catch { return []; } },
+  set(k, v) {
+    localStorage.setItem(k, JSON.stringify(v));
+    if (window._guardarEnFirestore) window._guardarEnFirestore(k, v);
+  },
+  id() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+};
+window._renderApp = () => render();
+function seed() {
+  if (!localStorage.getItem('unidades')) DB.set('unidades', [
+    { id: DB.id(), nombre: 'Unidad 1', placas: '', modelo: '' },
+    { id: DB.id(), nombre: 'Unidad 2', placas: '', modelo: '' },
+    { id: DB.id(), nombre: 'Unidad 3', placas: '', modelo: '' },
+  ]);
+  ['operadores','clientes','viajes','cobros','gastos','nominas','aportaciones','cortes'].forEach(k => {
+    if (!localStorage.getItem(k)) DB.set(k, []);
+  });
+}
+seed();
+
+// ══════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const fmt = n => '$' + Number(n||0).toLocaleString('es-MX', {minimumFractionDigits:0, maximumFractionDigits:0});
+const fmtDate = d => d ? new Date(d+'T12:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'2-digit'}) : '—';
+const today = () => new Date().toISOString().slice(0,10);
+
+function chipOwner(quien) {
+  const map = {
+    uriel: '<span class="chip-uriel">Uriel</span>',
+    kike:  '<span class="chip-kike">Kike</span>',
+    caja:  '<span class="chip-caja">Caja</span>',
+    cliente: '<span class="chip-cliente">Anticipo</span>'
+  };
+  return map[quien] || quien;
+}
+
+function semanaActual() {
+  const d = new Date();
+  const dom = new Date(d); dom.setDate(d.getDate() - d.getDay());
+  const sab = new Date(d); sab.setDate(d.getDate() + (6 - d.getDay()));
+  const iso = dt => dt.toISOString().slice(0,10);
+  return { ini: iso(dom), fin: iso(sab) };
+}
+
+function sueldoAcumulado(operadorId, semIni, semFin) {
+  const viajes = DB.get('viajes').filter(v => v.operadorId === operadorId && v.fecha >= semIni && v.fecha <= semFin);
+  const bruto = viajes.reduce((s,v) => s + (Number(v.flete||0) * Number(v.pctChofer||0) / 100), 0);
+  const pagado = DB.get('nominas').filter(n => n.operadorId === operadorId && n.semanaIni === semIni && n.semanaFin === semFin).reduce((s,n) => s + Number(n.total||0), 0);
+  return { bruto, pagado, pendiente: Math.max(0, bruto - pagado), viajes };
+}
+
+function saldoBalance() {
+  const cortes = DB.get('cortes');
+  const ultimoCorte = cortes.length ? cortes[cortes.length-1].fecha : null;
+  const filtrar = arr => ultimoCorte ? arr.filter(x => (x.fecha||'') > ultimoCorte) : arr;
+  const aports = filtrar(DB.get('aportaciones'));
+  const cobros = filtrar(DB.get('cobros'));
+  let uriel = aports.filter(a => a.quien === 'uriel').reduce((s,a) => s + Number(a.monto), 0);
+  let kike  = aports.filter(a => a.quien === 'kike').reduce((s,a) => s + Number(a.monto), 0);
+  uriel -= cobros.reduce((s,c) => s + Number(c.recuperaUriel||0), 0);
+  kike  -= cobros.reduce((s,c) => s + Number(c.recuperaKike||0), 0);
+  return { uriel: Math.max(0,uriel), kike: Math.max(0,kike) };
+}
+
+function viajeDeuda(viajeId) {
+  const viaje = DB.get('viajes').find(v => v.id === viajeId);
+  if (!viaje) return 0;
+  const cobrado = DB.get('cobros').filter(c => c.viajeId === viajeId).reduce((s,c) => s + Number(c.monto), 0);
+  return Math.max(0, Number(viaje.flete) - cobrado);
+}
+
+// ══════════════════════════════════════════════════════
+// SHEET ENGINE
+// ══════════════════════════════════════════════════════
+const overlay = $('sheet-overlay');
+function openSheet(title, html, onOpen) {
+  $('sheet-title').textContent = title;
+  $('sheet-body').innerHTML = html;
+  overlay.classList.add('open');
+  if (onOpen) onOpen();
+}
+function closeSheet() { overlay.classList.remove('open'); }
+$('sheet-close').onclick = closeSheet;
+overlay.addEventListener('click', e => { if (e.target === overlay) closeSheet(); });
+
+// ══════════════════════════════════════════════════════
+// ROUTER
+// ══════════════════════════════════════════════════════
+let currentView = 'dashboard';
+function navigate(view) {
+  currentView = view;
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  render();
+}
+document.querySelectorAll('.nav-btn').forEach(b => b.onclick = () => navigate(b.dataset.view));
+$('btn-quick-add').onclick = () => {
+  const map = { dashboard:'viaje', viajes:'viaje', cobros:'cobro', gastos:'gasto', catalogos:'cliente', cortes:'corte', metricas:'viaje' };
+  quickAdd(map[currentView] || 'viaje');
+};
+
+function render() {
+  const subs = { dashboard:'Resumen general', viajes:'Registro de viajes', cobros:'Cuentas por cobrar', gastos:'Gastos del negocio', catalogos:'Catálogos', cortes:'Cortes y liquidaciones', metricas:'Métricas por unidad' };
+  $('header-sub').textContent = subs[currentView] || '';
+  const views = { dashboard: renderDashboard, viajes: renderViajes, cobros: renderCobros, gastos: renderGastos, catalogos: renderCatalogos, cortes: renderCortes, metricas: renderMetricas };
+  $('content').innerHTML = '';
+  const el = (views[currentView] || renderDashboard)();
+  $('content').appendChild(el);
+}
+
+// ══════════════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════════════
+function renderDashboard() {
+  const el = document.createElement('div');
+  const viajes = DB.get('viajes');
+  const cobros = DB.get('cobros');
+  const gastos = DB.get('gastos');
+  const nominas = DB.get('nominas');
+  const saldo = saldoBalance();
+  const mes = today().slice(0,7);
+  const viajesMes = viajes.filter(v => v.fecha && v.fecha.startsWith(mes));
+  const ingresosMes = viajesMes.reduce((s,v) => s + Number(v.flete||0), 0);
+  const cobrosMes = cobros.filter(c => c.fecha && c.fecha.startsWith(mes)).reduce((s,c) => s + Number(c.monto||0), 0);
+  const gastosMes = gastos.filter(g => g.fecha && g.fecha.startsWith(mes)).reduce((s,g) => s + Number(g.monto||0), 0);
+  const nominasMes = nominas.filter(n => n.semanaFin && n.semanaFin.startsWith(mes)).reduce((s,n) => s + Number(n.total||0), 0);
+  const porCobrar = viajes.reduce((s,v) => s + viajeDeuda(v.id), 0);
+  const hoy = new Date();
+  const vencidos = viajes.filter(v => viajeDeuda(v.id) > 0 && v.fechaVence && new Date(v.fechaVence+'T12:00:00') < hoy);
+
+  el.innerHTML = `
+  <div class="section" style="padding-top:14px">
+    <div class="section-title">${mes.replace('-','/')} — este mes</div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-label">FLETES</div><div class="stat-val blue">${fmt(ingresosMes)}</div></div>
+      <div class="stat-box"><div class="stat-label">COBRADO</div><div class="stat-val green">${fmt(cobrosMes)}</div></div>
+      <div class="stat-box"><div class="stat-label">POR COBRAR</div><div class="stat-val amber">${fmt(porCobrar)}</div></div>
+      <div class="stat-box"><div class="stat-label">GASTOS</div><div class="stat-val red">${fmt(gastosMes + nominasMes)}</div></div>
+    </div>
+    ${vencidos.length ? `
+    <div class="alert alert-red" style="margin-bottom:12px">
+      <strong>⚠ ${vencidos.length} pago${vencidos.length>1?'s':''} vencido${vencidos.length>1?'s':''}</strong>
+      ${vencidos.map(v => { const c = DB.get('clientes').find(x=>x.id===v.clienteId); return '<br>· '+( c?.nombre||'Sin cliente')+' — '+fmt(viajeDeuda(v.id)); }).join('')}
+    </div>` : ''}
+  </div>
+
+  <div class="section">
+    <div class="section-title">Saldos a favor socios</div>
+    <div class="card">
+      <div class="card-row">
+        <div><span class="chip-uriel">Uriel</span><div style="font-size:20px;font-weight:700;font-family:var(--mono);color:var(--blue);margin-top:5px">${fmt(saldo.uriel)}</div></div>
+        <div style="text-align:right"><span class="chip-kike">Kike</span><div style="font-size:20px;font-weight:700;font-family:var(--mono);color:var(--orange);margin-top:5px">${fmt(saldo.kike)}</div></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Pendiente de recuperar en próximos cobros</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Nómina semana actual</div>
+    ${renderNominaDash()}
+  </div>
+
+  <div class="section">
+    <div class="section-title">Últimos viajes</div>
+    ${viajes.slice(-4).reverse().map(v => cardViaje(v)).join('') || '<div class="empty"><div class="empty-icon">🚛</div><p>Sin viajes registrados</p></div>'}
+    <div style="height:8px"></div>
+  </div>`;
+  return el;
+}
+
+// ══════════════════════════════════════════════════════
+// NÓMINA DASH
+// ══════════════════════════════════════════════════════
+function renderNominaDash() {
+  const operadores = DB.get('operadores');
+  if (!operadores.length) return '<div style="font-size:13px;color:var(--muted);padding:8px 0">Sin operadores registrados</div>';
+  const { ini, fin } = semanaActual();
+  const filas = operadores.map(op => {
+    const r = sueldoAcumulado(op.id, ini, fin);
+    return r.bruto > 0 ? { op, ...r } : null;
+  }).filter(Boolean);
+  if (!filas.length) return '<div style="font-size:13px;color:var(--muted);padding:4px 0">Sin viajes esta semana ('+fmtDate(ini)+' – '+fmtDate(fin)+')</div>';
+  const totalPend = filas.reduce((s,f) => s + f.pendiente, 0);
+  return filas.map(f => `
+  <div class="card" style="${f.pendiente>0?'border-color:#fcd34d':'border-color:#86efac'}">
+    <div class="card-row">
+      <span style="font-weight:600">${f.op.nombre}</span>
+      <span class="card-val" style="color:${f.pendiente>0?'var(--amber)':'var(--green)'}">${f.pendiente>0?fmt(f.pendiente)+' pendiente':'✓ Pagado'}</span>
+    </div>
+    <div class="card-row">
+      <span class="card-label">${f.viajes.length} viaje${f.viajes.length!==1?'s':''} · acumulado ${fmt(f.bruto)}</span>
+      ${f.pagado>0?'<span class="badge badge-green">pagado '+fmt(f.pagado)+'</span>':''}
+    </div>
+    ${f.pendiente>0?'<button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%;border-color:var(--amber);color:var(--amber)" onclick="pagarNominaDash(\''+f.op.id+'\',\''+ini+'\',\''+fin+'\','+f.pendiente+')">Registrar pago — '+fmt(f.pendiente)+'</button>':''}
+  </div>`).join('') + (totalPend>0?'<div style="font-size:12px;color:var(--muted);text-align:right;margin-top:2px">Total semana: <strong style="color:var(--amber);font-family:var(--mono)">'+fmt(totalPend)+'</strong></div>':'');
+}
+
+window.pagarNominaDash = function(operadorId, semIni, semFin, sugerido) {
+  const op = DB.get('operadores').find(o => o.id === operadorId);
+  openSheet('Pagar a ' + (op ? op.nombre : 'operador'), `
+    <div class="alert alert-blue">Semana ${fmtDate(semIni)} — ${fmtDate(semFin)}</div>
+    <div class="form-group"><label class="form-label">MONTO A PAGAR ($)</label><input class="form-input" type="number" id="np-monto" value="${Math.round(sugerido)}"></div>
+    <div class="form-group"><label class="form-label">PAGADO POR</label>
+      <select class="form-select" id="np-quien">
+        <option value="caja">Caja común</option>
+        <option value="uriel">Uriel (saldo a favor)</option>
+        <option value="kike">Kike (saldo a favor)</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">FORMA</label>
+      <select class="form-select" id="np-forma">
+        <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">NOTAS</label><input class="form-input" type="text" id="np-notas" placeholder="Opcional..."></div>
+    <button class="btn btn-primary" onclick="saveNominaRapida('${operadorId}','${semIni}','${semFin}')">Confirmar pago</button>
+  `);
+};
+
+window.saveNominaRapida = function(operadorId, semIni, semFin) {
+  const total = parseFloat($('np-monto') && $('np-monto').value) || 0;
+  const quien = $('np-quien') ? $('np-quien').value : 'caja';
+  const forma = $('np-forma') ? $('np-forma').value : 'efectivo';
+  const notas = $('np-notas') ? $('np-notas').value : '';
+  if (!total) { alert('Ingresa el monto'); return; }
+  const nominas = DB.get('nominas');
+  nominas.push({ id: DB.id(), operadorId, semanaIni: semIni, semanaFin: semFin, total, quien, forma, notas });
+  DB.set('nominas', nominas);
+  if (quien === 'uriel' || quien === 'kike') {
+    const aps = DB.get('aportaciones');
+    aps.push({ id: DB.id(), viajeId: null, quien, monto: total, fecha: semFin, concepto: 'nomina' });
+    DB.set('aportaciones', aps);
+  }
+  closeSheet(); render();
+};
+
+// ══════════════════════════════════════════════════════
+// VIAJES
+// ══════════════════════════════════════════════════════
+function cardViaje(v) {
+  const cliente = DB.get('clientes').find(c => c.id === v.clienteId);
+  const unidad = DB.get('unidades').find(u => u.id === v.unidadId);
+  const op = DB.get('operadores').find(o => o.id === v.operadorId);
+  const deuda = viajeDeuda(v.id);
+  const vencido = deuda > 0 && v.fechaVence && new Date(v.fechaVence+'T12:00:00') < new Date();
+  const badge = deuda > 0
+    ? (vencido ? '<span class="badge badge-red">VENCIDO '+fmt(deuda)+'</span>' : '<span class="badge badge-amber">'+fmt(deuda)+'</span>')
+    : '<span class="badge badge-green">Pagado</span>';
+  return `
+  <div class="card fade-in" onclick="editViaje('${v.id}')" style="cursor:pointer">
+    <div class="card-row">
+      <span style="font-weight:700;font-size:15px">${v.origen||'?'} → ${v.destino||'?'}</span>
+      ${badge}
+    </div>
+    <div class="card-row">
+      <span class="card-label">${fmtDate(v.fecha)} · ${unidad ? unidad.nombre : '—'}</span>
+      <span class="card-val" style="color:var(--blue)">${fmt(v.flete)}</span>
+    </div>
+    <div class="card-row">
+      <span class="card-label">${cliente ? cliente.nombre : 'Sin cliente'} · ${op ? op.nombre : 'Sin operador'}</span>
+      ${v.km ? '<span class="card-label">'+Number(v.km).toLocaleString('es-MX')+' km</span>' : ''}
+    </div>
+  </div>`;
+}
+
+function renderViajes() {
+  const el = document.createElement('div');
+  const viajes = DB.get('viajes').slice().reverse();
+  el.innerHTML = `
+  <div class="tab-strip">
+    <button class="tab-btn active" data-f="todos">Todos</button>
+    <button class="tab-btn" data-f="pendiente">Por cobrar</button>
+    <button class="tab-btn" data-f="vencido">Vencidos</button>
+    <button class="tab-btn" data-f="pagado">Pagados</button>
+  </div>
+  <div class="section" id="viajes-list" style="padding-top:14px">
+    ${viajes.length ? viajes.map(v => cardViaje(v)).join('') : '<div class="empty"><div class="empty-icon">🚛</div><p>Sin viajes registrados</p></div>'}
+    <div style="height:8px"></div>
+  </div>`;
+  setTimeout(() => {
+    el.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.onclick = () => {
+        el.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const f = btn.dataset.f;
+        const hoy = new Date();
+        const filtered = viajes.filter(v => {
+          const d = viajeDeuda(v.id);
+          if (f === 'todos') return true;
+          if (f === 'pagado') return d === 0;
+          if (f === 'pendiente') return d > 0 && (!v.fechaVence || new Date(v.fechaVence+'T12:00:00') >= hoy);
+          if (f === 'vencido') return d > 0 && v.fechaVence && new Date(v.fechaVence+'T12:00:00') < hoy;
+        });
+        $('viajes-list').innerHTML = (filtered.length ? filtered.map(v => cardViaje(v)).join('') : '<div class="empty"><div class="empty-icon">🔍</div><p>Sin resultados</p></div>') + '<div style="height:8px"></div>';
+      };
+    });
+  }, 0);
+  return el;
+}
+
+// ══════════════════════════════════════════════════════
+// NIP — protección de borrados
+// ══════════════════════════════════════════════════════
+function getNIP() { return localStorage.getItem('argos_nip') || null; }
+function setNIP(n) { localStorage.setItem('argos_nip', n); }
+
+function pedirNIP(onOk) {
+  const nipGuardado = getNIP();
+  if (!nipGuardado) {
+    openSheet('Crear NIP de seguridad', `
+      <div class="alert alert-amber">Aún no tienes NIP. Define uno de 4 dígitos para proteger los borrados.</div>
+      <div class="form-group"><label class="form-label">NUEVO NIP (4 dígitos)</label>
+        <input class="form-input" type="password" inputmode="numeric" maxlength="4" id="nip-nuevo" placeholder="****" style="font-size:24px;letter-spacing:8px;text-align:center">
+      </div>
+      <div class="form-group"><label class="form-label">CONFIRMAR NIP</label>
+        <input class="form-input" type="password" inputmode="numeric" maxlength="4" id="nip-conf" placeholder="****" style="font-size:24px;letter-spacing:8px;text-align:center">
+      </div>
+      <button class="btn btn-primary" onclick="guardarNIP()">Crear NIP</button>
+    `);
+    window._nipCallback = onOk;
+    return;
+  }
+  openSheet('Ingresa tu NIP', `
+    <div style="text-align:center;padding:8px 0 16px">
+      <div style="font-size:32px;margin-bottom:8px">🔒</div>
+      <div style="font-size:14px;color:var(--muted)">Esta acción requiere tu NIP</div>
+    </div>
+    <input class="form-input" type="password" inputmode="numeric" maxlength="4" id="nip-input" placeholder="****" style="font-size:28px;letter-spacing:10px;text-align:center;margin-bottom:16px" autofocus>
+    <div id="nip-error" style="color:var(--red);font-size:13px;text-align:center;margin-bottom:10px;display:none">NIP incorrecto</div>
+    <button class="btn btn-primary" onclick="verificarNIP()">Confirmar</button>
+  `);
+  window._nipCallback = onOk;
+  setTimeout(() => { const el = $('nip-input'); if(el) { el.focus(); el.addEventListener('keydown', e => { if(e.key==='Enter') window.verificarNIP(); }); } }, 200);
+}
+
+window.guardarNIP = function() {
+  const n1 = $('nip-nuevo') ? $('nip-nuevo').value : '';
+  const n2 = $('nip-conf') ? $('nip-conf').value : '';
+  if (n1.length !== 4 || !/^\d{4}$/.test(n1)) { alert('El NIP debe ser exactamente 4 dígitos'); return; }
+  if (n1 !== n2) { alert('Los NIP no coinciden'); return; }
+  setNIP(n1);
+  closeSheet();
+  if (window._nipCallback) { window._nipCallback(); window._nipCallback = null; }
+};
+
+window.verificarNIP = function() {
+  const ingresado = $('nip-input') ? $('nip-input').value : '';
+  if (ingresado === getNIP()) {
+    closeSheet();
+    if (window._nipCallback) { window._nipCallback(); window._nipCallback = null; }
+  } else {
+    const err = $('nip-error');
+    if (err) { err.style.display = 'block'; }
+    const inp = $('nip-input');
+    if (inp) { inp.value = ''; inp.focus(); inp.style.borderColor = 'var(--red)'; }
+  }
+};
+
+window.cambiarNIP = function() {
+  openSheet('Cambiar NIP', `
+    <div class="form-group"><label class="form-label">NIP ACTUAL</label>
+      <input class="form-input" type="password" inputmode="numeric" maxlength="4" id="nip-actual" placeholder="****" style="font-size:24px;letter-spacing:8px;text-align:center">
+    </div>
+    <div class="form-group"><label class="form-label">NIP NUEVO</label>
+      <input class="form-input" type="password" inputmode="numeric" maxlength="4" id="nip-nuevo2" placeholder="****" style="font-size:24px;letter-spacing:8px;text-align:center">
+    </div>
+    <div class="form-group"><label class="form-label">CONFIRMAR NIP NUEVO</label>
+      <input class="form-input" type="password" inputmode="numeric" maxlength="4" id="nip-conf2" placeholder="****" style="font-size:24px;letter-spacing:8px;text-align:center">
+    </div>
+    <button class="btn btn-primary" onclick="saveNuevoNIP()">Guardar nuevo NIP</button>
+  `);
+};
+
+window.saveNuevoNIP = function() {
+  const actual = $('nip-actual') ? $('nip-actual').value : '';
+  const nuevo  = $('nip-nuevo2') ? $('nip-nuevo2').value : '';
+  const conf   = $('nip-conf2')  ? $('nip-conf2').value  : '';
+  if (actual !== getNIP()) { alert('NIP actual incorrecto'); return; }
+  if (nuevo.length !== 4 || !/^\d{4}$/.test(nuevo)) { alert('El nuevo NIP debe ser 4 dígitos'); return; }
+  if (nuevo !== conf) { alert('Los NIP no coinciden'); return; }
+  setNIP(nuevo);
+  closeSheet();
+  alert('✓ NIP actualizado');
+};
+
+
+window.editViaje = function(id) {
+  const v = DB.get('viajes').find(x => x.id === id);
+  if (!v) return;
+  const deuda = viajeDeuda(id);
+  const cobros = DB.get('cobros').filter(c => c.viajeId === id);
+  const aports = DB.get('aportaciones').filter(a => a.viajeId === id);
+  const cliente = DB.get('clientes').find(c => c.id === v.clienteId);
+  const unidad = DB.get('unidades').find(u => u.id === v.unidadId);
+  const op = DB.get('operadores').find(o => o.id === v.operadorId);
+  const vencido = deuda > 0 && v.fechaVence && new Date(v.fechaVence+'T12:00:00') < new Date();
+  const enCurso = v.estado === 'en_curso';
+  const gastosExtra = v.gastosExtra || [];
+  const totalGastosExtra = gastosExtra.reduce((s,g) => s + Number(g.monto||0), 0);
+
+  openSheet('Detalle del viaje', `
+    <div class="card-row" style="margin-bottom:10px">
+      <span style="font-size:14px;font-weight:700">${v.origen} → ${v.destino}</span>
+      <span class="badge ${enCurso ? 'badge-orange' : 'badge-green'}">${enCurso ? '🚛 En curso' : '✓ Completado'}</span>
+    </div>
+    <div class="card-row" style="margin-bottom:14px">
+      <button onclick="toggleEstado('${id}')" class="btn btn-ghost btn-sm" style="font-size:11px;width:100%">${enCurso ? 'Marcar como completado' : 'Reabrir viaje'}</button>
+    </div>
+    <div class="card-row"><span class="card-label">Fecha</span><span>${fmtDate(v.fecha)}</span></div>
+    <div class="card-row"><span class="card-label">Cliente</span><span>${cliente ? cliente.nombre : '—'}</span></div>
+    <div class="card-row"><span class="card-label">Unidad</span><span>${unidad ? unidad.nombre : '—'}</span></div>
+    <div class="card-row"><span class="card-label">Operador</span><span>${op ? op.nombre : '—'}</span></div>
+    ${v.km ? '<div class="card-row"><span class="card-label">Kilómetros</span><span class="card-val">'+Number(v.km).toLocaleString('es-MX')+' km</span></div>' : ''}
+    <div class="divider"></div>
+    <div class="card-row"><span class="card-label">Flete</span><span class="card-val" style="color:var(--blue)">${fmt(v.flete)}</span></div>
+    <div class="card-row"><span class="card-label">Casetas</span><span class="card-val">-${fmt(v.casetas)}</span></div>
+    <div class="card-row"><span class="card-label">Combustible</span><span class="card-val">-${fmt(v.combustible)}</span></div>
+    <div class="card-row"><span class="card-label">Viático</span><span class="card-val">-${fmt(v.viatico)}</span></div>
+    <div class="card-row"><span class="card-label">Otros gastos</span><span class="card-val">-${fmt(v.otrosGastos)}</span></div>
+    <div class="card-row"><span class="card-label">% al chofer</span><span class="card-val">${v.pctChofer||0}%</span></div>
+    <div class="card-row"><span class="card-label">Pago chofer estimado</span><span class="card-val" style="color:var(--orange)">${fmt((Number(v.flete)||0)*(Number(v.pctChofer)||0)/100)}</span></div>
+    <div class="divider"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span class="section-title" style="margin-bottom:0">Gastos en camino</span>
+      <button class="btn btn-ghost btn-sm" style="border-color:var(--orange);color:var(--orange)" onclick="agregarGastoEnCamino('${id}')">+ Agregar</button>
+    </div>
+    ${gastosExtra.length ? gastosExtra.map((g,i) => '<div class="card-row"><span class="card-label">'+g.concepto+(g.descripcion?' — '+g.descripcion:'')+' · '+fmtDate(g.fecha)+'</span><div style="display:flex;align-items:center;gap:8px"><span class="card-val" style="color:var(--red)">-'+fmt(g.monto)+'</span><button onclick="borrarGastoExtra(\''+id+'\','+i+')" style="background:var(--red-light);border:none;color:var(--red);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">×</button></div></div>').join('') : '<p style="font-size:13px;color:var(--muted);margin-bottom:8px">Sin gastos en camino</p>'}
+    ${totalGastosExtra > 0 ? '<div class="card-row" style="margin-top:4px"><span class="card-label">Total gastos extra</span><span class="card-val" style="color:var(--red)">-'+fmt(totalGastosExtra)+'</span></div>' : ''}
+    <div class="divider"></div>
+    <div class="card-row"><span class="card-label">Por cobrar</span><span class="card-val" style="color:${vencido?'var(--red)':deuda>0?'var(--amber)':'var(--green)'}">${fmt(deuda)}</span></div>
+    ${v.fechaVence ? '<div class="card-row"><span class="card-label">Vence</span><span style="color:'+(vencido?'var(--red)':'var(--amber)')+'">'+fmtDate(v.fechaVence)+'</span></div>' : ''}
+    <div class="divider"></div>
+    <div class="section-title">Aportaciones</div>
+    ${aports.length ? aports.map(a => '<div class="card-row"><span>'+chipOwner(a.quien)+'</span><span class="card-val">'+fmt(a.monto)+'</span></div>').join('') : '<p style="font-size:13px;color:var(--muted);margin-bottom:8px">Sin aportaciones</p>'}
+    <div class="divider"></div>
+    <div class="section-title">Cobros recibidos</div>
+    ${cobros.length ? cobros.map(c => '<div class="card-row"><span class="card-label">'+fmtDate(c.fecha)+' · '+(c.forma||'')+'</span><span class="card-val" style="color:var(--green)">'+fmt(c.monto)+'</span></div>').join('') : '<p style="font-size:13px;color:var(--muted);margin-bottom:8px">Sin cobros</p>'}
+    <div style="height:12px"></div>
+    ${deuda > 0 ? '<button class="btn btn-primary" onclick="abrirAbono(\''+id+'\')">Registrar cobro</button><div style="height:8px"></div>' : ''}
+    <button class="btn btn-ghost" onclick="formViaje('${id}')">Editar viaje</button>
+    <div style="height:8px"></div>
+    <button class="btn btn-danger btn-sm" style="width:100%" onclick="delViajeNIP('${id}')">🗑 Eliminar viaje</button>
+  `);
+};
+
+window.toggleEstado = function(id) {
+  const viajes = DB.get('viajes');
+  const idx = viajes.findIndex(v => v.id === id);
+  if (idx < 0) return;
+  viajes[idx].estado = viajes[idx].estado === 'en_curso' ? 'completado' : 'en_curso';
+  DB.set('viajes', viajes);
+  closeSheet(); render();
+};
+
+window.agregarGastoEnCamino = function(viajeId) {
+  openSheet('Gasto en camino', `
+    <div class="form-group"><label class="form-label">FECHA</label>
+      <input class="form-input" type="date" id="ge-fecha" value="${today()}">
+    </div>
+    <div class="form-group"><label class="form-label">CONCEPTO</label>
+      <select class="form-select" id="ge-concepto">
+        <option>Combustible extra</option><option>Caseta extra</option>
+        <option>Llanta</option><option>Mecánico</option>
+        <option>Grúa</option><option>Otro percance</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">DESCRIPCIÓN</label>
+      <input class="form-input" type="text" id="ge-desc" placeholder="Detalle del gasto...">
+    </div>
+    <div class="form-group"><label class="form-label">MONTO ($)</label>
+      <input class="form-input" type="number" id="ge-monto" placeholder="0">
+    </div>
+    <div class="form-group"><label class="form-label">PAGADO POR</label>
+      <select class="form-select" id="ge-quien">
+        <option value="caja">Caja común</option>
+        <option value="uriel">Uriel (saldo a favor)</option>
+        <option value="kike">Kike (saldo a favor)</option>
+        <option value="operador">Operador (se descuenta de su pago)</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="saveGastoExtra('${viajeId}')">Guardar gasto</button>
+  `);
+};
+
+window.saveGastoExtra = function(viajeId) {
+  const fecha = $('ge-fecha') ? $('ge-fecha').value : today();
+  const concepto = $('ge-concepto') ? $('ge-concepto').value : '';
+  const descripcion = $('ge-desc') ? $('ge-desc').value : '';
+  const monto = parseFloat($('ge-monto') ? $('ge-monto').value : 0) || 0;
+  const quien = $('ge-quien') ? $('ge-quien').value : 'caja';
+  if (!monto) { alert('Ingresa el monto'); return; }
+  const viajes = DB.get('viajes');
+  const idx = viajes.findIndex(v => v.id === viajeId);
+  if (idx < 0) return;
+  if (!viajes[idx].gastosExtra) viajes[idx].gastosExtra = [];
+  viajes[idx].gastosExtra.push({ fecha, concepto, descripcion, monto, quien });
+  DB.set('viajes', viajes);
+  if (quien === 'uriel' || quien === 'kike') {
+    const aps = DB.get('aportaciones');
+    aps.push({ id: DB.id(), viajeId, quien, monto, fecha, concepto: 'extra-'+concepto });
+    DB.set('aportaciones', aps);
+  }
+  closeSheet();
+  setTimeout(() => editViaje(viajeId), 150);
+};
+
+window.borrarGastoExtra = function(viajeId, gIdx) {
+  pedirNIP(() => {
+    const viajes = DB.get('viajes');
+    const vi = viajes.findIndex(v => v.id === viajeId);
+    if (vi < 0 || !viajes[vi].gastosExtra) return;
+    viajes[vi].gastosExtra.splice(gIdx, 1);
+    DB.set('viajes', viajes);
+    setTimeout(() => editViaje(viajeId), 150);
+  });
+};
+
+window.delViajeNIP = function(id) {
+  pedirNIP(() => {
+    DB.set('viajes', DB.get('viajes').filter(v => v.id !== id));
+    DB.set('cobros', DB.get('cobros').filter(c => c.viajeId !== id));
+    DB.set('aportaciones', DB.get('aportaciones').filter(a => a.viajeId !== id));
+    closeSheet(); render();
+  });
+};
+
+
+let _arowCount = 0;
+function aportRow(i, a) {
+  return '<div class="apor-row" id="arow-'+i+'"><select class="form-select" id="aq-'+i+'" style="flex:0 0 130px"><option value="caja"'+(a.quien==='caja'?' selected':'')+'>Caja común</option><option value="uriel"'+(a.quien==='uriel'?' selected':'')+'>Uriel</option><option value="kike"'+(a.quien==='kike'?' selected':'')+'>Kike</option><option value="cliente"'+(a.quien==='cliente'?' selected':'')+'>Anticipo cliente</option></select><input class="form-input" type="number" id="am-'+i+'" placeholder="Monto $" value="'+(a.monto||'')+'"><button style="background:var(--red-light);border:none;color:var(--red);width:32px;height:32px;border-radius:8px;font-size:16px;cursor:pointer;flex-shrink:0" onclick="document.getElementById(\'arow-'+i+'\').remove()">×</button></div>';
+}
+
+window.addAportRow = function() {
+  _arowCount++;
+  const c = document.getElementById('aports-container');
+  const d = document.createElement('div');
+  d.innerHTML = aportRow(_arowCount, { quien:'caja', monto:'' });
+  c.appendChild(d.firstElementChild);
+};
+
+function formViaje(editId) {
+  const viaje = editId ? DB.get('viajes').find(v => v.id === editId) : null;
+  const v = viaje || {};
+  const unidades = DB.get('unidades');
+  const operadores = DB.get('operadores');
+  const clientes = DB.get('clientes');
+  const defPct = v.pctChofer !== undefined ? v.pctChofer : (operadores.find(o => o.id === v.operadorId) ? operadores.find(o => o.id === v.operadorId).porcentaje : '');
+  _arowCount = 0;
+  openSheet(editId ? 'Editar viaje' : 'Nuevo viaje', `
+    <div class="form-group"><label class="form-label">FECHA</label><input class="form-input" type="date" id="f-fecha" value="${v.fecha||today()}"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">ORIGEN</label><input class="form-input" type="text" id="f-origen" placeholder="Ciudad" value="${v.origen||''}"></div>
+      <div class="form-group"><label class="form-label">DESTINO</label><input class="form-input" type="text" id="f-destino" placeholder="Ciudad" value="${v.destino||''}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">KILÓMETROS</label><input class="form-input" type="number" id="f-km" placeholder="0" value="${v.km||''}"></div>
+    <div class="form-group"><label class="form-label">UNIDAD</label>
+      <select class="form-select" id="f-unidad">
+        <option value="">Seleccionar...</option>
+        ${unidades.map(u => '<option value="'+u.id+'"'+(v.unidadId===u.id?' selected':'')+'>'+u.nombre+(u.placas?' ('+u.placas+')':'')+'</option>').join('')}
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">OPERADOR</label>
+      <select class="form-select" id="f-operador" onchange="precargarPct(this)">
+        <option value="">Seleccionar...</option>
+        ${operadores.map(o => '<option value="'+o.id+'" data-pct="'+(o.porcentaje||0)+'"'+(v.operadorId===o.id?' selected':'')+'>'+o.nombre+'</option>').join('')}
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">% AL CHOFER</label><input class="form-input" type="number" id="f-pct" placeholder="0" value="${defPct}"></div>
+      <div class="form-group"><label class="form-label">VIÁTICO ($)</label><input class="form-input" type="number" id="f-viatico" placeholder="0" value="${v.viatico||''}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">CLIENTE</label>
+      <select class="form-select" id="f-cliente">
+        <option value="">Seleccionar...</option>
+        ${clientes.map(c => '<option value="'+c.id+'"'+(v.clienteId===c.id?' selected':'')+'>'+c.nombre+'</option>').join('')}
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">FLETE ($)</label><input class="form-input" type="number" id="f-flete" placeholder="0" value="${v.flete||''}"></div>
+      <div class="form-group"><label class="form-label">VENCE</label><input class="form-input" type="date" id="f-vence" value="${v.fechaVence||''}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">CASETAS ($)</label><input class="form-input" type="number" id="f-casetas" placeholder="0" value="${v.casetas||''}"></div>
+      <div class="form-group"><label class="form-label">COMBUSTIBLE ($)</label><input class="form-input" type="number" id="f-combustible" placeholder="0" value="${v.combustible||''}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">OTROS GASTOS ($)</label><input class="form-input" type="number" id="f-otros" placeholder="0" value="${v.otrosGastos||''}"></div>
+    <div class="divider"></div>
+    <div class="section-title" style="margin-bottom:10px">Financiamiento del viaje</div>
+    <div id="aports-container">${(v.aportaciones||[{quien:'caja',monto:''}]).map((a,i) => aportRow(i,a)).join('')}</div>
+    <button class="btn btn-ghost btn-sm" style="margin-bottom:16px" onclick="addAportRow()">+ Agregar fuente</button>
+    <button class="btn btn-primary" onclick="saveViaje('${editId||''}')">Guardar viaje</button>
+  `);
+}
+
+window.precargarPct = function(sel) {
+  const pct = sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex].dataset.pct;
+  const campo = $('f-pct');
+  if (campo && !campo.value && pct) campo.value = pct;
+};
+
+window.saveViaje = function(editId) {
+  const fecha = $('f-fecha') ? $('f-fecha').value : '';
+  const origen = ($('f-origen') ? $('f-origen').value : '').trim();
+  const destino = ($('f-destino') ? $('f-destino').value : '').trim();
+  const unidadId = $('f-unidad') ? $('f-unidad').value : '';
+  const operadorId = $('f-operador') ? $('f-operador').value : '';
+  const clienteId = $('f-cliente') ? $('f-cliente').value : '';
+  const flete = parseFloat($('f-flete') ? $('f-flete').value : 0) || 0;
+  const fechaVence = $('f-vence') ? $('f-vence').value : '';
+  const casetas = parseFloat($('f-casetas') ? $('f-casetas').value : 0) || 0;
+  const combustible = parseFloat($('f-combustible') ? $('f-combustible').value : 0) || 0;
+  const otrosGastos = parseFloat($('f-otros') ? $('f-otros').value : 0) || 0;
+  const pctChofer = parseFloat($('f-pct') ? $('f-pct').value : 0) || 0;
+  const viatico = parseFloat($('f-viatico') ? $('f-viatico').value : 0) || 0;
+  const km = parseFloat($('f-km') ? $('f-km').value : 0) || 0;
+  if (!origen || !destino || !flete) { alert('Ruta y flete son obligatorios'); return; }
+
+  const aports = [];
+  document.querySelectorAll('[id^="aq-"]').forEach(sel => {
+    const i = sel.id.split('-')[1];
+    const mEl = document.getElementById('am-'+i);
+    const monto = mEl ? (parseFloat(mEl.value)||0) : 0;
+    if (monto > 0) aports.push({ quien: sel.value, monto });
+  });
+
+  const viajes = DB.get('viajes');
+  const id = editId || DB.id();
+  const data = { id, fecha, origen, destino, unidadId, operadorId, clienteId, flete, fechaVence, casetas, combustible, otrosGastos, pctChofer, viatico, km };
+
+  if (editId) {
+    const idx = viajes.findIndex(v => v.id === editId);
+    if (idx >= 0) viajes[idx] = Object.assign({}, viajes[idx], data);
+    DB.set('viajes', viajes);
+    let aps = DB.get('aportaciones').filter(a => a.viajeId !== editId);
+    aports.forEach(a => aps.push({ id: DB.id(), viajeId: editId, fecha, ...a }));
+    DB.set('aportaciones', aps);
+  } else {
+    viajes.push(data);
+    DB.set('viajes', viajes);
+    let aps = DB.get('aportaciones');
+    aports.forEach(a => aps.push({ id: DB.id(), viajeId: id, fecha, ...a }));
+    DB.set('aportaciones', aps);
+  }
+  closeSheet(); render();
+};
+
+// ══════════════════════════════════════════════════════
+// COBROS — flujo con checklist y abonos
+// ══════════════════════════════════════════════════════
+function renderCobros() {
+  const el = document.createElement('div');
+  const viajes = DB.get('viajes');
+  const hoy = new Date();
+
+  // Separar en grupos
+  const vencidos   = viajes.filter(v => viajeDeuda(v.id) > 0 && v.fechaVence && new Date(v.fechaVence+'T12:00:00') < hoy).sort((a,b) => a.fechaVence.localeCompare(b.fechaVence));
+  const pendientes = viajes.filter(v => viajeDeuda(v.id) > 0 && (!v.fechaVence || new Date(v.fechaVence+'T12:00:00') >= hoy)).sort((a,b) => (a.fechaVence||'9999').localeCompare(b.fechaVence||'9999'));
+  const pagados    = viajes.filter(v => viajeDeuda(v.id) === 0 && DB.get('cobros').some(c => c.viajeId === v.id)).slice().reverse().slice(0,10);
+
+  const totalPendiente = [...vencidos, ...pendientes].reduce((s,v) => s + viajeDeuda(v.id), 0);
+
+  el.innerHTML = `
+  <div class="tab-strip" id="cobros-tabs">
+    <button class="tab-btn active" data-tab="pendientes">Por cobrar <span style="background:var(--amber);color:white;border-radius:99px;padding:1px 7px;font-size:10px;margin-left:4px">${vencidos.length + pendientes.length}</span></button>
+    <button class="tab-btn" data-tab="vencidos">Vencidos <span style="background:var(--red);color:white;border-radius:99px;padding:1px 7px;font-size:10px;margin-left:4px">${vencidos.length}</span></button>
+    <button class="tab-btn" data-tab="pagados">Pagados</button>
+  </div>
+  <div id="cobros-content" style="padding-bottom:8px">
+    ${htmlCobrosPendientes(vencidos, pendientes, totalPendiente)}
+  </div>`;
+
+  setTimeout(() => {
+    el.querySelectorAll('#cobros-tabs .tab-btn').forEach(btn => {
+      btn.onclick = () => {
+        el.querySelectorAll('#cobros-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const tab = btn.dataset.tab;
+        const content = $('cobros-content');
+        if (tab === 'pendientes') content.innerHTML = htmlCobrosPendientes(vencidos, pendientes, totalPendiente);
+        else if (tab === 'vencidos') content.innerHTML = htmlCobrosVencidos(vencidos);
+        else content.innerHTML = htmlCobrosPagados(pagados);
+      };
+    });
+  }, 0);
+  return el;
+}
+
+function tarjetaCobro(v, opts) {
+  const cliente = DB.get('clientes').find(c => c.id === v.clienteId);
+  const deuda = viajeDeuda(v.id);
+  const cobrosViaje = DB.get('cobros').filter(c => c.viajeId === v.id);
+  const totalAbonado = cobrosViaje.reduce((s,c) => s + Number(c.monto), 0);
+  const hoy = new Date();
+  const vencido = v.fechaVence && new Date(v.fechaVence+'T12:00:00') < hoy;
+  const pagado = deuda === 0;
+
+  const pct = v.flete > 0 ? Math.round((totalAbonado / v.flete) * 100) : 0;
+
+  return `
+  <div class="card" style="border-left:3px solid ${pagado ? 'var(--green)' : vencido ? 'var(--red)' : 'var(--amber)'}">
+    <div class="card-row">
+      <div style="display:flex;align-items:center;gap:10px">
+        <button onclick="togglePagado('${v.id}')" style="width:28px;height:28px;border-radius:8px;border:2px solid ${pagado?'var(--green)':'var(--border2)'};background:${pagado?'var(--green)':'white'};cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px">
+          ${pagado ? '<span style="color:white">✓</span>' : ''}
+        </button>
+        <div>
+          <div style="font-weight:600;font-size:14px">${cliente ? cliente.nombre : 'Sin cliente'}</div>
+          <div class="card-label">${v.origen} → ${v.destino} · ${fmtDate(v.fecha)}</div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div class="card-val" style="color:${pagado?'var(--green)':vencido?'var(--red)':'var(--amber)'}">${pagado ? fmt(v.flete) : fmt(deuda)}</div>
+        <div style="font-size:10px;color:var(--muted)">${pagado ? 'cobrado' : 'pendiente'}</div>
+      </div>
+    </div>
+
+    ${!pagado && v.flete > 0 ? `
+    <div style="margin:6px 0 4px">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:3px">
+        <span>Abonado ${fmt(totalAbonado)} de ${fmt(v.flete)}</span>
+        <span>${pct}%</span>
+      </div>
+      <div style="height:5px;background:var(--bg4);border-radius:99px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${vencido?'var(--red)':'var(--blue)'};border-radius:99px;transition:width 0.3s"></div>
+      </div>
+    </div>` : ''}
+
+    <div class="card-row" style="margin-top:6px">
+      ${v.fechaVence ? `<span class="badge ${pagado?'badge-green':vencido?'badge-red':'badge-amber'}">${pagado?'✓ Pagado':vencido?'VENCIDO · '+fmtDate(v.fechaVence):'vence '+fmtDate(v.fechaVence)}</span>` : '<span></span>'}
+      ${!pagado ? `<button class="btn btn-ghost btn-sm" style="border-color:var(--blue);color:var(--blue)" onclick="abrirAbono('${v.id}')">+ Abono</button>` : ''}
+    </div>
+
+    ${cobrosViaje.length > 0 ? `
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+      ${cobrosViaje.map(c => `<div class="card-row" style="margin-bottom:3px"><span class="card-label">${fmtDate(c.fecha)} · ${c.forma||'efectivo'}</span><span style="font-size:12px;font-family:var(--mono);font-weight:600;color:var(--green)">+${fmt(c.monto)}</span></div>`).join('')}
+    </div>` : ''}
+  </div>`;
+}
+
+function htmlCobrosPendientes(vencidos, pendientes, total) {
+  const todos = [...vencidos, ...pendientes];
+  if (!todos.length) return '<div class="section" style="padding-top:14px"><div class="empty"><div class="empty-icon">✅</div><p>Todo cobrado</p></div></div>';
+  return `<div class="section" style="padding-top:14px">
+    <div class="section-title">Por cobrar — ${fmt(total)}</div>
+    ${todos.map(v => tarjetaCobro(v)).join('')}
+  </div>`;
+}
+
+function htmlCobrosVencidos(vencidos) {
+  if (!vencidos.length) return '<div class="section" style="padding-top:14px"><div class="empty"><div class="empty-icon">🎉</div><p>Sin pagos vencidos</p></div></div>';
+  return `<div class="section" style="padding-top:14px">
+    <div class="alert alert-red">Estos clientes tienen pagos vencidos</div>
+    ${vencidos.map(v => tarjetaCobro(v)).join('')}
+  </div>`;
+}
+
+function htmlCobrosPagados(pagados) {
+  if (!pagados.length) return '<div class="section" style="padding-top:14px"><div class="empty"><div class="empty-icon">📋</div><p>Sin cobros completados</p></div></div>';
+  return `<div class="section" style="padding-top:14px">
+    <div class="section-title">Últimos pagados</div>
+    ${pagados.map(v => tarjetaCobro(v)).join('')}
+  </div>`;
+}
+
+// Toggle pagado completo (check rápido cuando pagan todo)
+window.togglePagado = function(viajeId) {
+  const deuda = viajeDeuda(viajeId);
+  const viaje = DB.get('viajes').find(v => v.id === viajeId);
+  const cobrosViaje = DB.get('cobros').filter(c => c.viajeId === viajeId);
+
+  if (deuda === 0) {
+    // Ya está pagado — no hacemos nada, mostrar info
+    editViaje(viajeId);
+    return;
+  }
+  // Abrir abono con el monto completo pre-llenado
+  abrirAbono(viajeId, deuda);
+};
+
+// Abrir sheet de abono
+window.abrirAbono = function(viajeId, montoSugerido) {
+  const viaje = DB.get('viajes').find(v => v.id === viajeId);
+  const deuda = viajeDeuda(viajeId);
+  const cliente = DB.get('clientes').find(c => c.id === (viaje ? viaje.clienteId : ''));
+  const aports = DB.get('aportaciones').filter(a => a.viajeId === viajeId && (a.quien === 'uriel' || a.quien === 'kike'));
+  const yaU = DB.get('cobros').filter(c => c.viajeId === viajeId).reduce((s,c) => s + Number(c.recuperaUriel||0), 0);
+  const yaK = DB.get('cobros').filter(c => c.viajeId === viajeId).reduce((s,c) => s + Number(c.recuperaKike||0), 0);
+  const sugerido = montoSugerido || deuda;
+
+  openSheet('Registrar pago', `
+    <div class="alert alert-blue" style="margin-bottom:12px">
+      <strong>${cliente ? cliente.nombre : 'Cliente'}</strong><br>
+      ${viaje ? viaje.origen+'→'+viaje.destino+' · '+fmtDate(viaje.fecha) : ''}
+    </div>
+    <div class="card-row" style="margin-bottom:14px">
+      <span class="card-label">Saldo pendiente</span>
+      <span class="card-val" style="color:var(--amber)">${fmt(deuda)}</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn btn-ghost btn-sm" onclick="setMonto(${deuda})" style="flex:1;border-color:var(--blue);color:var(--blue)">Total ${fmt(deuda)}</button>
+      <button class="btn btn-ghost btn-sm" onclick="setMonto(${Math.round(deuda/2)})" style="flex:1">Mitad ${fmt(deuda/2)}</button>
+    </div>
+    <div class="form-group"><label class="form-label">MONTO DEL PAGO ($)</label>
+      <input class="form-input" type="number" id="c-monto" value="${Math.round(sugerido)}" oninput="prevCobro(this,${JSON.stringify(aports)},${yaU},${yaK})">
+    </div>
+    <div class="form-group"><label class="form-label">FECHA DE PAGO</label>
+      <input class="form-input" type="date" id="c-fecha" value="${today()}">
+    </div>
+    <div class="form-group"><label class="form-label">FORMA DE PAGO</label>
+      <select class="form-select" id="c-forma">
+        <option value="efectivo">Efectivo</option>
+        <option value="transferencia">Transferencia</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">NOTAS</label>
+      <input class="form-input" type="text" id="c-notas" placeholder="Referencia, banco...">
+    </div>
+    <div class="divider"></div>
+    <div class="section-title" style="margin-bottom:10px">Distribución automática</div>
+    <div id="cobro-prev"></div>
+    <div style="height:14px"></div>
+    <button class="btn btn-primary" onclick="saveCobro('${viajeId}',${JSON.stringify(aports)},${yaU},${yaK})">Confirmar pago</button>
+  `, () => {
+    const el = $('c-monto');
+    if (el) prevCobro(el, aports, yaU, yaK);
+  });
+};
+
+window.setMonto = function(monto) {
+  const el = $('c-monto');
+  if (el) { el.value = Math.round(monto); el.dispatchEvent(new Event('input')); }
+};
+
+window.prevCobro = function(input, aports, yaU, yaK) {
+  const monto = parseFloat(input.value) || 0;
+  const pendU = Math.max(0, aports.filter(a=>a.quien==='uriel').reduce((s,a)=>s+Number(a.monto),0) - yaU);
+  const pendK = Math.max(0, aports.filter(a=>a.quien==='kike').reduce((s,a)=>s+Number(a.monto),0) - yaK);
+  const totalP = pendU + pendK;
+  let rU = 0, rK = 0, rest = monto;
+  if (totalP > 0 && rest > 0) {
+    const pagar = Math.min(rest, totalP);
+    rU = pagar * (pendU/totalP);
+    rK = pagar * (pendK/totalP);
+    rest -= (rU + rK);
+  }
+  const prev = $('cobro-prev');
+  if (!prev) return;
+  prev.innerHTML = '<div class="card-row"><span>'+chipOwner('uriel')+' recupera</span><span class="card-val" style="color:var(--blue)">'+fmt(rU)+'</span></div><div class="card-row"><span>'+chipOwner('kike')+' recupera</span><span class="card-val" style="color:var(--orange)">'+fmt(rK)+'</span></div><div class="divider"></div><div class="card-row"><span class="card-label">Utilidad a repartir</span><span class="card-val" style="color:var(--green)">'+fmt(rest)+'</span></div><div class="card-row"><span class="card-label">Uriel 50%</span><span class="card-val">'+fmt(rest/2)+'</span></div><div class="card-row"><span class="card-label">Kike 50%</span><span class="card-val">'+fmt(rest/2)+'</span></div>';
+};
+
+window.saveCobro = function(viajeId, aports, yaU, yaK) {
+  const monto = parseFloat($('c-monto') ? $('c-monto').value : 0) || 0;
+  const fecha = $('c-fecha') ? $('c-fecha').value : today();
+  const forma = $('c-forma') ? $('c-forma').value : 'efectivo';
+  const notas = $('c-notas') ? $('c-notas').value : '';
+  if (!monto) { alert('Ingresa el monto'); return; }
+  const pendU = Math.max(0, aports.filter(a=>a.quien==='uriel').reduce((s,a)=>s+Number(a.monto),0) - yaU);
+  const pendK = Math.max(0, aports.filter(a=>a.quien==='kike').reduce((s,a)=>s+Number(a.monto),0) - yaK);
+  const totalP = pendU + pendK;
+  let rU = 0, rK = 0, rest = monto;
+  if (totalP > 0 && rest > 0) {
+    const pagar = Math.min(rest, totalP);
+    rU = pagar * (pendU/totalP);
+    rK = pagar * (pendK/totalP);
+    rest -= (rU + rK);
+  }
+  const cobros = DB.get('cobros');
+  cobros.push({ id: DB.id(), viajeId, fecha, monto, forma, notas, recuperaUriel: rU, recuperaKike: rK, utilidad: rest });
+  DB.set('cobros', cobros);
+  closeSheet(); render();
+};
+
+// ══════════════════════════════════════════════════════
+// GASTOS
+// ══════════════════════════════════════════════════════
+function renderGastos() {
+  const el = document.createElement('div');
+  el.innerHTML = `
+  <div class="tab-strip">
+    <button class="tab-btn active" onclick="showGTab('mensuales',this)">Mensuales</button>
+    <button class="tab-btn" onclick="showGTab('nomina',this)">Nómina</button>
+  </div>
+  <div id="gastos-content">${htmlGastosMensuales()}</div>`;
+  return el;
+}
+
+window.showGTab = function(tab, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  $('gastos-content').innerHTML = tab === 'nomina' ? htmlNomina() : htmlGastosMensuales();
+};
+
+function htmlGastosMensuales() {
+  const gastos = DB.get('gastos').slice().reverse();
+  const mes = today().slice(0,7);
+  const unidades = DB.get('unidades');
+  return `<div class="section" style="padding-top:14px">
+    <div class="section-title">Este mes — ${fmt(gastos.filter(g=>g.fecha&&g.fecha.startsWith(mes)).reduce((s,g)=>s+Number(g.monto),0))}</div>
+    <button class="btn btn-ghost" style="margin-bottom:14px" onclick="formGasto()">+ Registrar gasto</button>
+    ${gastos.length ? gastos.map(g => {
+      const u = unidades.find(x => x.id === g.unidadId);
+      return '<div class="card"><div class="card-row"><span style="font-weight:600">'+g.concepto+(g.descripcion?' — '+g.descripcion:'')+'</span><span class="card-val" style="color:var(--red)">'+fmt(g.monto)+'</span></div><div class="card-row"><span class="card-label">'+fmtDate(g.fecha)+'</span><div style="display:flex;gap:6px;align-items:center">'+(u?'<span class="badge badge-blue">'+u.nombre+'</span>':'')+chipOwner(g.quien)+'<button onclick="delGastoNIP(\''+g.id+'\')" style="background:var(--red-light);border:none;color:var(--red);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">🗑</button></div></div></div>';
+    }).join('') : '<div class="empty"><div class="empty-icon">📋</div><p>Sin gastos registrados</p></div>'}
+    <div style="height:8px"></div>
+  </div>`;
+}
+
+function htmlNomina() {
+  const nominas = DB.get('nominas').slice().reverse();
+  const operadores = DB.get('operadores');
+  const semanas = [...new Set(nominas.map(n => n.semanaIni+'/'+n.semanaFin))];
+  return `<div class="section" style="padding-top:14px">
+    <div class="section-title">Semana actual</div>
+    ${renderNominaDash()}
+    ${semanas.length ? '<div class="section-title" style="margin-top:20px">Historial</div>'+semanas.map(sk => {
+      const [sIni, sFin] = sk.split('/');
+      return '<div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin:12px 0 6px">'+fmtDate(sIni)+' — '+fmtDate(sFin)+'</div>'+nominas.filter(n=>n.semanaIni===sIni&&n.semanaFin===sFin).map(n => {
+        const op = operadores.find(o => o.id === n.operadorId);
+        const { viajes: vOp } = sueldoAcumulado(n.operadorId, sIni, sFin);
+        return '<div class="card"><div class="card-row"><span style="font-weight:600">'+(op?op.nombre:'Operador')+'</span><span class="card-val" style="color:var(--red)">'+fmt(n.total)+'</span></div><div class="card-row"><span class="card-label">'+vOp.length+' viajes · '+(n.forma||'efectivo')+'</span>'+chipOwner(n.quien)+'</div><div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">'+vOp.map(v=>'<div class="card-row" style="margin-bottom:3px"><span class="card-label">'+v.origen+'→'+v.destino+' '+fmtDate(v.fecha)+'</span><span style="font-size:12px;font-family:var(--mono);color:var(--muted)">'+fmt(Number(v.flete||0)*Number(v.pctChofer||0)/100)+'</span></div>').join('')+'</div>'+(n.notas?'<div style="font-size:12px;color:var(--muted);margin-top:4px">'+n.notas+'</div>':'')+'</div>';
+      }).join('');
+    }).join('') : ''}
+    <div style="height:8px"></div>
+  </div>`;
+}
+
+window.formGasto = function() {
+  const unidades = DB.get('unidades');
+  openSheet('Nuevo gasto', `
+    <div class="form-group"><label class="form-label">FECHA</label><input class="form-input" type="date" id="g-fecha" value="${today()}"></div>
+    <div class="form-group"><label class="form-label">CONCEPTO</label>
+      <select class="form-select" id="g-concepto">
+        <option>Patio</option><option>GPS</option><option>Seguro</option>
+        <option>Mantenimiento</option><option>Descompostura</option><option>Otro</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">UNIDAD (vacío = gasto general)</label>
+      <select class="form-select" id="g-unidad">
+        <option value="">General (÷ todas las unidades)</option>
+        ${unidades.map(u => '<option value="'+u.id+'">'+u.nombre+(u.placas?' · '+u.placas:'')+'</option>').join('')}
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">DESCRIPCIÓN</label><input class="form-input" type="text" id="g-desc" placeholder="ej. Alternador, renta patio..."></div>
+    <div class="form-group"><label class="form-label">MONTO ($)</label><input class="form-input" type="number" id="g-monto" placeholder="0"></div>
+    <div class="form-group"><label class="form-label">PAGADO POR</label>
+      <select class="form-select" id="g-quien">
+        <option value="caja">Caja común</option>
+        <option value="uriel">Uriel (saldo a favor)</option>
+        <option value="kike">Kike (saldo a favor)</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="saveGasto()">Guardar gasto</button>
+  `);
+};
+
+window.delGastoNIP = function(id) {
+  pedirNIP(() => {
+    DB.set('gastos', DB.get('gastos').filter(g => g.id !== id));
+    render();
+  });
+};
+
+window.saveGasto = function() {
+  const fecha = $('g-fecha') ? $('g-fecha').value : today();
+  const concepto = $('g-concepto') ? $('g-concepto').value : '';
+  const descripcion = $('g-desc') ? $('g-desc').value : '';
+  const monto = parseFloat($('g-monto') ? $('g-monto').value : 0) || 0;
+  const quien = $('g-quien') ? $('g-quien').value : 'caja';
+  const unidadId = ($('g-unidad') ? $('g-unidad').value : '') || null;
+  if (!monto) { alert('Ingresa el monto'); return; }
+  const gastos = DB.get('gastos');
+  gastos.push({ id: DB.id(), fecha, concepto, descripcion, monto, quien, unidadId });
+  DB.set('gastos', gastos);
+  if (quien === 'uriel' || quien === 'kike') {
+    const aps = DB.get('aportaciones');
+    aps.push({ id: DB.id(), viajeId: null, quien, monto, fecha, concepto: 'gasto-'+concepto });
+    DB.set('aportaciones', aps);
+  }
+  closeSheet(); render();
+};
+
+// ══════════════════════════════════════════════════════
+// MÉTRICAS POR UNIDAD
+// ══════════════════════════════════════════════════════
+function calcMetricasUnidad(unidadId, mes) {
+  const viajes = DB.get('viajes').filter(v => v.unidadId === unidadId && v.fecha && v.fecha.startsWith(mes));
+  const gastos = DB.get('gastos');
+  const nUnidades = Math.max(1, DB.get('unidades').length);
+  const km = viajes.reduce((s,v) => s + Number(v.km||0), 0);
+  const ingresos = viajes.reduce((s,v) => s + Number(v.flete||0), 0);
+  const gastosViaje = viajes.reduce((s,v) => s + Number(v.casetas||0) + Number(v.combustible||0) + Number(v.viatico||0), 0);
+  const sueldoChoferes = viajes.reduce((s,v) => s + (Number(v.flete||0) * Number(v.pctChofer||0) / 100), 0);
+  const gastosDirect = gastos.filter(g => g.unidadId === unidadId && g.fecha && g.fecha.startsWith(mes)).reduce((s,g) => s + Number(g.monto||0), 0);
+  const gastosGen = gastos.filter(g => !g.unidadId && g.fecha && g.fecha.startsWith(mes)).reduce((s,g) => s + Number(g.monto||0), 0);
+  const gastosProrr = gastosGen / nUnidades;
+  const costoTotal = gastosViaje + sueldoChoferes + gastosDirect + gastosProrr;
+  const utilidad = ingresos - costoTotal;
+  return { km, ingresos, gastosViaje, sueldoChoferes, gastosDirect, gastosProrr, costoTotal, utilidad, costoPorKm: km > 0 ? costoTotal/km : null, ingresoPorKm: km > 0 ? ingresos/km : null, nViajes: viajes.length };
+}
+
+function renderMetricas() {
+  const el = document.createElement('div');
+  const meses = [];
+  const d = new Date();
+  for (let i = 0; i < 6; i++) {
+    const m = new Date(d.getFullYear(), d.getMonth() - i, 1);
+    meses.push(m.toISOString().slice(0,7));
+  }
+  el.innerHTML = `
+  <div class="tab-strip" id="met-tabs">
+    ${meses.map((m,i) => '<button class="tab-btn'+(i===0?' active':'')+'" onclick="renderMet(\''+m+'\',this)">'+m.replace('-','/')+'</button>').join('')}
+  </div>
+  <div id="met-content">${buildMet(meses[0])}</div>`;
+  return el;
+}
+
+window.renderMet = function(mes, btn) {
+  document.querySelectorAll('#met-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  $('met-content').innerHTML = buildMet(mes);
+};
+
+function buildMet(mes) {
+  const unidades = DB.get('unidades');
+  if (!unidades.length) return '<div class="empty"><p>Sin unidades registradas</p></div>';
+  const mets = unidades.map(u => ({ u, m: calcMetricasUnidad(u.id, mes) }));
+  const ranking = [...mets].sort((a,b) => b.m.utilidad - a.m.utilidad);
+  const cpkms = mets.filter(x => x.m.costoPorKm != null).map(x => x.m.costoPorKm);
+  const maxCpk = cpkms.length ? Math.max(...cpkms) : null;
+  const minCpk = cpkms.length ? Math.min(...cpkms) : null;
+  const fmtKm = n => n ? Number(n).toLocaleString('es-MX',{maximumFractionDigits:0})+' km' : '—';
+  const fmtCkm = n => n != null ? '$'+Number(n).toFixed(2)+'/km' : '—';
+  const medals = ['🥇','🥈','🥉'];
+
+  return `<div class="section" style="padding-top:14px">
+    <div class="section-title">Comparativa ${mes.replace('-','/')}</div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      ${ranking.map((x,i) => '<div style="flex:1;background:var(--bg2);border:1.5px solid '+(i===0?'var(--blue)':i===ranking.length-1&&x.m.utilidad<0?'var(--red)':'var(--border)')+';border-radius:var(--r);padding:12px;text-align:center"><div style="font-size:22px">'+medals[i]+'</div><div style="font-size:12px;font-weight:700;margin:4px 0">'+x.u.nombre+'</div><div style="font-size:14px;font-weight:700;font-family:var(--mono);color:'+(x.m.utilidad>=0?'var(--green)':'var(--red)')+'">'+fmt(x.m.utilidad)+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px">'+x.m.nViajes+' viaje'+( x.m.nViajes!==1?'s':'')+'</div></div>').join('')}
+    </div>
+    ${mets.map(({u, m}) => {
+      const esPeor = m.costoPorKm === maxCpk && cpkms.length > 1;
+      const esMejor = m.costoPorKm === minCpk && cpkms.length > 1 && minCpk !== maxCpk;
+      return '<div class="card" style="border-left:3px solid '+(m.utilidad<0?'var(--red)':esMejor&&m.km>0?'var(--green)':'var(--border)')+'"><div class="card-row"><div><div style="font-weight:700;font-size:15px">'+u.nombre+'</div>'+(u.placas?'<div style="font-size:11px;color:var(--muted)">'+u.placas+(u.modelo?' · '+u.modelo:'')+'</div>':'')+'</div><div style="text-align:right"><div style="font-size:20px;font-weight:700;font-family:var(--mono);color:'+(m.utilidad>=0?'var(--green)':'var(--red)')+'">'+fmt(m.utilidad)+'</div><div style="font-size:10px;color:var(--muted)">utilidad neta</div></div></div><div class="divider"></div><div class="card-row"><span class="card-label">Kilómetros</span><span class="card-val">'+fmtKm(m.km)+'</span></div>'+(m.km>0?'<div class="card-row"><span class="card-label">Costo / km</span><span class="card-val" style="color:'+(esPeor?'var(--red)':esMejor?'var(--green)':'var(--text)')+'">'+fmtCkm(m.costoPorKm)+'</span></div><div class="card-row"><span class="card-label">Ingreso / km</span><span class="card-val" style="color:var(--blue)">'+fmtCkm(m.ingresoPorKm)+'</span></div>':'')+'<div class="divider"></div><div class="card-row"><span class="card-label">Ingresos (fletes)</span><span class="card-val" style="color:var(--blue)">'+fmt(m.ingresos)+'</span></div><div class="card-row"><span class="card-label">Gastos de viaje</span><span class="card-val" style="color:var(--red)">-'+fmt(m.gastosViaje)+'</span></div><div class="card-row"><span class="card-label">Sueldo choferes</span><span class="card-val" style="color:var(--red)">-'+fmt(m.sueldoChoferes)+'</span></div><div class="card-row"><span class="card-label">Gtos. directos</span><span class="card-val" style="color:var(--red)">-'+fmt(m.gastosDirect)+'</span></div><div class="card-row"><span class="card-label">Gtos. generales (÷'+DB.get('unidades').length+')</span><span class="card-val" style="color:var(--red)">-'+fmt(m.gastosProrr)+'</span></div>'+(esPeor&&m.km>0?'<div class="alert alert-red" style="margin-top:8px">Mayor costo/km este mes.</div>':'')+(m.utilidad<0?'<div class="alert alert-red" style="margin-top:8px">Operación con pérdida.</div>':'')+'</div>';
+    }).join('')}
+    <div class="section-title" style="margin-top:4px">Totales del mes</div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-label">KM TOTALES</div><div class="stat-val blue">${mets.reduce((s,x)=>s+x.m.km,0).toLocaleString('es-MX')}</div></div>
+      <div class="stat-box"><div class="stat-label">INGRESOS</div><div class="stat-val green">${fmt(mets.reduce((s,x)=>s+x.m.ingresos,0))}</div></div>
+      <div class="stat-box"><div class="stat-label">COSTOS</div><div class="stat-val red">${fmt(mets.reduce((s,x)=>s+x.m.costoTotal,0))}</div></div>
+      <div class="stat-box"><div class="stat-label">UTILIDAD</div><div class="stat-val ${mets.reduce((s,x)=>s+x.m.utilidad,0)>=0?'green':'red'}">${fmt(mets.reduce((s,x)=>s+x.m.utilidad,0))}</div></div>
+    </div>
+    <div style="height:8px"></div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// CORTES
+// ══════════════════════════════════════════════════════
+function calcCorte() {
+  const cortes = DB.get('cortes');
+  const ultimoCorte = cortes.length ? cortes[cortes.length-1].fecha : null;
+  const filtrar = arr => ultimoCorte ? arr.filter(x => (x.fecha||'') > ultimoCorte) : arr;
+  const aports = filtrar(DB.get('aportaciones'));
+  const cobros = filtrar(DB.get('cobros'));
+  let sU = aports.filter(a=>a.quien==='uriel').reduce((s,a)=>s+Number(a.monto),0);
+  let sK = aports.filter(a=>a.quien==='kike').reduce((s,a)=>s+Number(a.monto),0);
+  sU -= cobros.reduce((s,c)=>s+Number(c.recuperaUriel||0),0);
+  sK -= cobros.reduce((s,c)=>s+Number(c.recuperaKike||0),0);
+  const util = cobros.reduce((s,c)=>s+Number(c.utilidad||0),0);
+  const repU = util/2, repK = util/2;
+  return { saldoUriel: Math.max(0,sU), saldoKike: Math.max(0,sK), utilidadTotal: util, repUriel: repU, repKike: repK, totalUriel: Math.max(0,sU)+repU, totalKike: Math.max(0,sK)+repK, desde: ultimoCorte, viajesCount: filtrar(DB.get('viajes')).length, cobradoTotal: cobros.reduce((s,c)=>s+Number(c.monto||0),0) };
+}
+
+function renderCortes() {
+  const el = document.createElement('div');
+  const cortes = DB.get('cortes').slice().reverse();
+  const calc = calcCorte();
+  el.innerHTML = `
+  <div class="section" style="padding-top:14px">
+    <div class="section-title">Período actual${calc.desde?' — desde '+fmtDate(calc.desde):' — desde el inicio'}</div>
+    <div class="card" style="border-top:3px solid var(--blue)">
+      <div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-bottom:12px">RESUMEN DEL PERÍODO</div>
+      <div class="card-row"><span class="card-label">Viajes realizados</span><span class="card-val">${calc.viajesCount}</span></div>
+      <div class="card-row"><span class="card-label">Total cobrado</span><span class="card-val" style="color:var(--green)">${fmt(calc.cobradoTotal)}</span></div>
+      <div class="card-row"><span class="card-label">Utilidad para repartir</span><span class="card-val" style="color:var(--blue)">${fmt(calc.utilidadTotal)}</span></div>
+      <div class="divider"></div>
+      <div class="card-row">
+        <div><span class="chip-uriel">Uriel</span><div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--blue);margin-top:6px">${fmt(calc.totalUriel)}</div><div style="font-size:10px;color:var(--muted)">saldo ${fmt(calc.saldoUriel)} + util ${fmt(calc.repUriel)}</div></div>
+        <div style="text-align:right"><span class="chip-kike">Kike</span><div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--orange);margin-top:6px">${fmt(calc.totalKike)}</div><div style="font-size:10px;color:var(--muted)">saldo ${fmt(calc.saldoKike)} + util ${fmt(calc.repKike)}</div></div>
+      </div>
+    </div>
+    <button class="btn btn-orange" onclick="iniciarCorte()">Hacer corte ahora</button>
+  </div>
+  <div class="section">
+    <div class="section-title">Historial de cortes</div>
+    ${cortes.length ? cortes.map(c => '<div class="card"><div class="card-row"><span style="font-weight:600">'+fmtDate(c.fecha)+'</span><span class="badge badge-green">Liquidado</span></div><div class="card-row"><span class="card-label">'+c.viajesCount+' viajes · cobrado '+fmt(c.cobradoTotal)+'</span></div><div class="divider"></div><div class="card-row"><span class="chip-uriel">Uriel</span><span class="card-val" style="color:var(--blue)">'+fmt(c.totalUriel)+'</span></div><div class="card-row"><span class="chip-kike">Kike</span><span class="card-val" style="color:var(--orange)">'+fmt(c.totalKike)+'</span></div>'+(c.pagadoPor?'<div style="font-size:12px;color:var(--muted);margin-top:4px">'+c.pagadoPor+'</div>':'')+(c.notas?'<div style="font-size:12px;color:var(--muted)">'+c.notas+'</div>':'')+'</div>').join('') : '<div class="empty"><div class="empty-icon">📊</div><p>Sin cortes registrados</p></div>'}
+    <div style="height:8px"></div>
+  </div>`;
+  return el;
+}
+
+window.iniciarCorte = function() {
+  const c = calcCorte();
+  openSheet('Confirmar corte', `
+    <div class="alert alert-blue">Período: ${c.desde ? fmtDate(c.desde)+' al '+fmtDate(today()) : 'Inicio al '+fmtDate(today())}</div>
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-row"><span class="card-label">Viajes</span><span class="card-val">${c.viajesCount}</span></div>
+      <div class="card-row"><span class="card-label">Total cobrado</span><span class="card-val" style="color:var(--green)">${fmt(c.cobradoTotal)}</span></div>
+      <div class="card-row"><span class="card-label">Utilidad</span><span class="card-val" style="color:var(--blue)">${fmt(c.utilidadTotal)}</span></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-row"><span class="chip-uriel">Uriel</span><span style="font-size:20px;font-weight:700;font-family:var(--mono);color:var(--blue)">${fmt(c.totalUriel)}</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Saldo a favor ${fmt(c.saldoUriel)} + utilidad ${fmt(c.repUriel)}</div>
+      <div class="card-row"><span class="chip-kike">Kike</span><span style="font-size:20px;font-weight:700;font-family:var(--mono);color:var(--orange)">${fmt(c.totalKike)}</span></div>
+      <div style="font-size:11px;color:var(--muted)">Saldo a favor ${fmt(c.saldoKike)} + utilidad ${fmt(c.repKike)}</div>
+    </div>
+    <div class="form-group"><label class="form-label">¿QUIÉN PAGÓ A QUIÉN?</label>
+      <select class="form-select" id="ct-pago">
+        <option value="">Repartido en efectivo</option>
+        <option value="uriel-kike">Uriel le pagó a Kike</option>
+        <option value="kike-uriel">Kike le pagó a Uriel</option>
+        <option value="caja">Se tomó de caja</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">FORMA</label>
+      <select class="form-select" id="ct-forma"><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="mixto">Mixto</option></select>
+    </div>
+    <div class="form-group"><label class="form-label">NOTAS</label><input class="form-input" type="text" id="ct-notas" placeholder="Observaciones..."></div>
+    <div class="alert alert-amber" style="margin-bottom:16px">Al confirmar el balance se reinicia a cero.</div>
+    <button class="btn btn-orange" onclick="confirmarCorte()">Confirmar y liquidar</button>
+  `);
+};
+
+window.confirmarCorte = function() {
+  const c = calcCorte();
+  const pagMap = { 'uriel-kike':'Uriel → Kike', 'kike-uriel':'Kike → Uriel', 'caja':'De caja', '':'Efectivo directo' };
+  const pv = $('ct-pago') ? $('ct-pago').value : '';
+  const corte = { id: DB.id(), fecha: today(), desde: c.desde, viajesCount: c.viajesCount, cobradoTotal: c.cobradoTotal, utilidadTotal: c.utilidadTotal, saldoUriel: c.saldoUriel, saldoKike: c.saldoKike, repUriel: c.repUriel, repKike: c.repKike, totalUriel: c.totalUriel, totalKike: c.totalKike, pagadoPor: pagMap[pv]||'', forma: $('ct-forma')?$('ct-forma').value:'', notas: $('ct-notas')?$('ct-notas').value:'' };
+  const cortes = DB.get('cortes');
+  cortes.push(corte);
+  DB.set('cortes', cortes);
+  closeSheet(); navigate('cortes');
+  setTimeout(() => alert('✓ Corte registrado. Balance reiniciado.'), 200);
+};
+
+// ══════════════════════════════════════════════════════
+// CATÁLOGOS
+// ══════════════════════════════════════════════════════
+function renderCatalogos() {
+  const el = document.createElement('div');
+  el.innerHTML = `
+  <div class="tab-strip">
+    <button class="tab-btn active" onclick="showCat('unidades',this)">Unidades</button>
+    <button class="tab-btn" onclick="showCat('operadores',this)">Operadores</button>
+    <button class="tab-btn" onclick="showCat('clientes',this)">Clientes</button>
+    <button class="tab-btn" onclick="showCat('config',this)">Config</button>
+  </div>
+  <div id="cat-content">${htmlUnidades()}</div>`;
+  return el;
+}
+
+window.showCat = function(tab, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const map = { unidades: htmlUnidades, operadores: htmlOperadores, clientes: htmlClientes, config: htmlConfig };
+  $('cat-content').innerHTML = (map[tab] || htmlUnidades)();
+};
+
+function htmlConfig() {
+  const tieneNIP = !!getNIP();
+  return `<div class="section" style="padding-top:14px">
+    <div class="section-title">Seguridad</div>
+    <div class="card">
+      <div class="card-row">
+        <div>
+          <div style="font-weight:600">NIP de borrado</div>
+          <div class="card-label">${tieneNIP ? 'NIP configurado ✓' : 'Sin NIP — cualquiera puede borrar'}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="${tieneNIP ? 'cambiarNIP()' : 'pedirNIP(()=>{})'}">${tieneNIP ? 'Cambiar NIP' : 'Crear NIP'}</button>
+      </div>
+    </div>
+    <div class="section-title" style="margin-top:16px">Datos de prueba</div>
+    <div class="card" style="border-color:#fca5a5">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Borra <strong>todos</strong> los datos de la app. Útil para limpiar simulaciones.</div>
+      <button class="btn btn-danger" onclick="resetTodo()">🗑 Borrar todos los datos</button>
+    </div>
+  </div>`;
+}
+
+window.resetTodo = function() {
+  pedirNIP(() => {
+    if (!confirm('¿Seguro? Esto borra TODOS los viajes, cobros, gastos y catálogos.')) return;
+    ['viajes','cobros','gastos','nominas','aportaciones','cortes','operadores','clientes'].forEach(k => DB.set(k, []));
+    DB.set('unidades', [
+      { id: DB.id(), nombre: 'Unidad 1', placas: '', modelo: '' },
+      { id: DB.id(), nombre: 'Unidad 2', placas: '', modelo: '' },
+      { id: DB.id(), nombre: 'Unidad 3', placas: '', modelo: '' },
+    ]);
+    closeSheet(); render();
+    alert('✓ Datos borrados. Las unidades se reiniciaron.');
+  });
+};
+
+function htmlUnidades() {
+  const items = DB.get('unidades');
+  return '<div class="section" style="padding-top:14px"><button class="btn btn-ghost" style="margin-bottom:14px" onclick="formUnidad()">+ Nueva unidad</button>'+items.map(u => '<div class="card"><div class="card-row"><strong>'+u.nombre+'</strong><button class="btn btn-ghost btn-sm" onclick="formUnidad(\''+u.id+'\')">Editar</button></div>'+(u.placas?'<div class="card-label">Placas: '+u.placas+'</div>':'')+(u.modelo?'<div class="card-label">'+u.modelo+'</div>':'')+'</div>').join('')+'<div style="height:8px"></div></div>';
+}
+
+window.formUnidad = function(editId) {
+  const u = editId ? (DB.get('unidades').find(x=>x.id===editId)||{}) : {};
+  openSheet(editId?'Editar unidad':'Nueva unidad', `
+    <div class="form-group"><label class="form-label">NOMBRE</label><input class="form-input" id="u-nom" value="${u.nombre||''}" placeholder="Unidad 1"></div>
+    <div class="form-group"><label class="form-label">PLACAS</label><input class="form-input" id="u-pla" value="${u.placas||''}" placeholder="ABC-1234"></div>
+    <div class="form-group"><label class="form-label">MODELO</label><input class="form-input" id="u-mod" value="${u.modelo||''}" placeholder="Kenworth T680 2020"></div>
+    <button class="btn btn-primary" onclick="saveUnidad('${editId||''}')">Guardar</button>
+    ${editId?'<div style="height:8px"></div><button class="btn btn-danger btn-sm" style="width:100%" onclick="delItem(\'unidades\',\''+editId+'\')">Eliminar</button>':''}
+  `);
+};
+
+window.saveUnidad = function(editId) {
+  const nombre = ($('u-nom')?$('u-nom').value:'').trim();
+  if (!nombre) { alert('Nombre requerido'); return; }
+  const items = DB.get('unidades');
+  const data = { nombre, placas: $('u-pla')?$('u-pla').value:'', modelo: $('u-mod')?$('u-mod').value:'' };
+  if (editId) { const i = items.findIndex(x=>x.id===editId); if(i>=0) items[i]=Object.assign({},items[i],data); }
+  else items.push({ id: DB.id(), ...data });
+  DB.set('unidades', items); closeSheet(); render();
+};
+
+function htmlOperadores() {
+  const items = DB.get('operadores');
+  return '<div class="section" style="padding-top:14px"><button class="btn btn-ghost" style="margin-bottom:14px" onclick="formOperador()">+ Nuevo operador</button>'+(items.length?items.map(o=>'<div class="card"><div class="card-row"><strong>'+o.nombre+'</strong><button class="btn btn-ghost btn-sm" onclick="formOperador(\''+o.id+'\')">Editar</button></div><div class="card-label">'+o.porcentaje+'% del flete'+(o.tel?' · '+o.tel:'')+'</div></div>').join(''):'<div class="empty"><div class="empty-icon">👷</div><p>Sin operadores</p></div>')+'<div style="height:8px"></div></div>';
+}
+
+window.formOperador = function(editId) {
+  const o = editId ? (DB.get('operadores').find(x=>x.id===editId)||{}) : {};
+  openSheet(editId?'Editar operador':'Nuevo operador', `
+    <div class="form-group"><label class="form-label">NOMBRE</label><input class="form-input" id="o-nom" value="${o.nombre||''}" placeholder="Nombre completo"></div>
+    <div class="form-group"><label class="form-label">TELÉFONO</label><input class="form-input" id="o-tel" value="${o.tel||''}" type="tel"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">% DEL FLETE</label><input class="form-input" id="o-pct" type="number" value="${o.porcentaje||''}" placeholder="25"></div>
+      <div class="form-group"><label class="form-label">VIÁTICOS/DÍA ($)</label><input class="form-input" id="o-viat" type="number" value="${o.viaticos||''}" placeholder="0"></div>
+    </div>
+    <button class="btn btn-primary" onclick="saveOp('${editId||''}')">Guardar</button>
+    ${editId?'<div style="height:8px"></div><button class="btn btn-danger btn-sm" style="width:100%" onclick="delItem(\'operadores\',\''+editId+'\')">Eliminar</button>':''}
+  `);
+};
+
+window.saveOp = function(editId) {
+  const nombre = ($('o-nom')?$('o-nom').value:'').trim();
+  if (!nombre) { alert('Nombre requerido'); return; }
+  const items = DB.get('operadores');
+  const data = { nombre, tel:$('o-tel')?$('o-tel').value:'', porcentaje:parseFloat($('o-pct')?$('o-pct').value:0)||0, viaticos:parseFloat($('o-viat')?$('o-viat').value:0)||0 };
+  if (editId) { const i=items.findIndex(x=>x.id===editId); if(i>=0) items[i]=Object.assign({},items[i],data); }
+  else items.push({ id: DB.id(), ...data });
+  DB.set('operadores', items); closeSheet(); render();
+};
+
+function htmlClientes() {
+  const items = DB.get('clientes');
+  return '<div class="section" style="padding-top:14px"><button class="btn btn-ghost" style="margin-bottom:14px" onclick="formCliente()">+ Nuevo cliente</button>'+(items.length?items.map(c=>{const pend=DB.get('viajes').filter(v=>v.clienteId===c.id).reduce((s,v)=>s+viajeDeuda(v.id),0);return '<div class="card"><div class="card-row"><strong>'+c.nombre+'</strong><button class="btn btn-ghost btn-sm" onclick="formCliente(\''+c.id+'\')">Editar</button></div>'+(c.rfc?'<div class="card-label">RFC: '+c.rfc+'</div>':'')+'<div class="card-row" style="margin-top:6px"><span class="card-label">Saldo pendiente</span><span class="card-val" style="color:'+(pend>0?'var(--amber)':'var(--green)')+'">'+fmt(pend)+'</span></div></div>';}).join(''):'<div class="empty"><div class="empty-icon">🏢</div><p>Sin clientes</p></div>')+'<div style="height:8px"></div></div>';
+}
+
+window.formCliente = function(editId) {
+  const c = editId ? (DB.get('clientes').find(x=>x.id===editId)||{}) : {};
+  openSheet(editId?'Editar cliente':'Nuevo cliente', `
+    <div class="form-group"><label class="form-label">NOMBRE / EMPRESA</label><input class="form-input" id="cl-nom" value="${c.nombre||''}" placeholder="Razón social"></div>
+    <div class="form-group"><label class="form-label">RFC</label><input class="form-input" id="cl-rfc" value="${c.rfc||''}" placeholder="XAXX010101000"></div>
+    <div class="form-group"><label class="form-label">TELÉFONO</label><input class="form-input" id="cl-tel" value="${c.tel||''}" type="tel"></div>
+    <div class="form-group"><label class="form-label">DÍAS DE CRÉDITO</label><input class="form-input" id="cl-dias" type="number" value="${c.diasCredito||30}"></div>
+    <button class="btn btn-primary" onclick="saveCli('${editId||''}')">Guardar</button>
+    ${editId?'<div style="height:8px"></div><button class="btn btn-danger btn-sm" style="width:100%" onclick="delItem(\'clientes\',\''+editId+'\')">Eliminar</button>':''}
+  `);
+};
+
+window.saveCli = function(editId) {
+  const nombre = ($('cl-nom')?$('cl-nom').value:'').trim();
+  if (!nombre) { alert('Nombre requerido'); return; }
+  const items = DB.get('clientes');
+  const data = { nombre, rfc:$('cl-rfc')?$('cl-rfc').value:'', tel:$('cl-tel')?$('cl-tel').value:'', diasCredito:parseInt($('cl-dias')?$('cl-dias').value:30)||30 };
+  if (editId) { const i=items.findIndex(x=>x.id===editId); if(i>=0) items[i]=Object.assign({},items[i],data); }
+  else items.push({ id: DB.id(), ...data });
+  DB.set('clientes', items); closeSheet(); render();
+};
+
+window.delItem = function(tabla, id) {
+  if (!confirm('¿Eliminar este registro?')) return;
+  DB.set(tabla, DB.get(tabla).filter(x=>x.id!==id));
+  closeSheet(); render();
+};
+
+// ══════════════════════════════════════════════════════
+// QUICK ADD
+// ══════════════════════════════════════════════════════
+function quickAdd(tipo) {
+  if (tipo === 'viaje') formViaje();
+  else if (tipo === 'cobro') {
+    const pend = DB.get('viajes').filter(v => viajeDeuda(v.id) > 0);
+    if (!pend.length) { alert('No hay viajes pendientes de cobro'); return; }
+    quickCobro(pend[0].id);
+  }
+  else if (tipo === 'gasto') formGasto();
+  else if (tipo === 'cliente') formCliente();
+  else if (tipo === 'corte') iniciarCorte();
+}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+render();
+</script>
+</body>
+</html>
