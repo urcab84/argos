@@ -392,7 +392,8 @@ function viajeDeuda(viajeId) {
   const viaje = DB.get('viajes').find(v => v.id === viajeId);
   if (!viaje) return 0;
   const cobrado = DB.get('cobros').filter(c => c.viajeId === viajeId).reduce((s,c) => s + Number(c.monto), 0);
-  return Math.max(0, Number(viaje.flete) - cobrado);
+  const anticipo = Number(viaje.anticipo || 0);
+  return Math.max(0, Number(viaje.flete) - anticipo - cobrado);
 }
 
 // ══════════════════════════════════════════════════════
@@ -436,6 +437,44 @@ function render() {
 // ══════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════
+function calcCaja() {
+  const viajes = DB.get('viajes');
+  const cobros = DB.get('cobros');
+  const gastos = DB.get('gastos');
+  const nominas = DB.get('nominas');
+  const aportaciones = DB.get('aportaciones');
+
+  // ENTRADAS a caja
+  // 1. Anticipos de clientes en viajes
+  const anticipos = viajes.reduce((s,v) => s + Number(v.anticipo||0), 0);
+  // 2. Remanente de cobros (utilidad que queda después de recuperar socios)
+  const cobrosACaja = cobros.reduce((s,c) => s + Number(c.utilidad||0), 0);
+
+  // SALIDAS de caja
+  // 1. Gastos mensuales pagados de caja
+  const gastosCaja = gastos.filter(g => g.quien === 'caja').reduce((s,g) => s + Number(g.monto||0), 0);
+  // 2. Nóminas pagadas de caja
+  const nominasCaja = nominas.filter(n => n.quien === 'caja').reduce((s,n) => s + Number(n.total||0), 0);
+  // 3. Aportaciones de caja a viajes (financiamiento de gastos del viaje)
+  const aportsCaja = aportaciones.filter(a => a.quien === 'caja').reduce((s,a) => s + Number(a.monto||0), 0);
+  // 4. Gastos en camino pagados de caja
+  const extrasViajeCaja = viajes.reduce((s,v) => {
+    const extras = (v.gastosExtra || []).filter(g => g.quien === 'caja');
+    return s + extras.reduce((ss,g) => ss + Number(g.monto||0), 0);
+  }, 0);
+
+  const total = anticipos + cobrosACaja - gastosCaja - nominasCaja - aportsCaja - extrasViajeCaja;
+  return {
+    total,
+    anticipos,
+    cobrosACaja,
+    gastosCaja,
+    nominasCaja,
+    aportsCaja,
+    extrasViajeCaja
+  };
+}
+
 function renderDashboard() {
   const el = document.createElement('div');
   const viajes = DB.get('viajes');
@@ -443,6 +482,7 @@ function renderDashboard() {
   const gastos = DB.get('gastos');
   const nominas = DB.get('nominas');
   const saldo = saldoBalance();
+  const caja = calcCaja();
   const mes = today().slice(0,7);
   const viajesMes = viajes.filter(v => v.fecha && v.fecha.startsWith(mes));
   const ingresosMes = viajesMes.reduce((s,v) => s + Number(v.flete||0), 0);
@@ -450,6 +490,7 @@ function renderDashboard() {
   const gastosMes = gastos.filter(g => g.fecha && g.fecha.startsWith(mes)).reduce((s,g) => s + Number(g.monto||0), 0);
   const nominasMes = nominas.filter(n => n.semanaFin && n.semanaFin.startsWith(mes)).reduce((s,n) => s + Number(n.total||0), 0);
   const porCobrar = viajes.reduce((s,v) => s + viajeDeuda(v.id), 0);
+  const anticiposPendientes = viajesMes.reduce((s,v) => s + Number(v.anticipo||0), 0);
   const hoy = new Date();
   const vencidos = viajes.filter(v => viajeDeuda(v.id) > 0 && v.fechaVence && new Date(v.fechaVence+'T12:00:00') < hoy);
 
@@ -465,8 +506,29 @@ function renderDashboard() {
     ${vencidos.length ? `
     <div class="alert alert-red" style="margin-bottom:12px">
       <strong>⚠ ${vencidos.length} pago${vencidos.length>1?'s':''} vencido${vencidos.length>1?'s':''}</strong>
-      ${vencidos.map(v => { const c = DB.get('clientes').find(x=>x.id===v.clienteId); return '<br>· '+( c?.nombre||'Sin cliente')+' — '+fmt(viajeDeuda(v.id)); }).join('')}
+      ${vencidos.map(v => { const c = DB.get('clientes').find(x=>x.id===v.clienteId); return '<br>· '+(c ? c.nombre : 'Sin cliente')+' — '+fmt(viajeDeuda(v.id)); }).join('')}
     </div>` : ''}
+  </div>
+
+  <div class="section">
+    <div class="section-title">Saldo en caja común</div>
+    <div class="card" style="border-left:3px solid ${caja.total>=0?'var(--green)':'var(--red)'}">
+      <div class="card-row">
+        <div>
+          <div style="font-size:26px;font-weight:700;font-family:var(--mono);color:${caja.total>=0?'var(--green)':'var(--red)'}">
+            ${fmt(caja.total)}
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Disponible en caja del negocio</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="card-row"><span class="card-label">Anticipos clientes</span><span style="font-size:12px;font-family:var(--mono);color:var(--green)">+${fmt(caja.anticipos)}</span></div>
+      <div class="card-row"><span class="card-label">Cobros (remanente)</span><span style="font-size:12px;font-family:var(--mono);color:var(--green)">+${fmt(caja.cobrosACaja)}</span></div>
+      <div class="card-row"><span class="card-label">Financiamiento viajes</span><span style="font-size:12px;font-family:var(--mono);color:var(--red)">-${fmt(caja.aportsCaja)}</span></div>
+      <div class="card-row"><span class="card-label">Gastos en camino</span><span style="font-size:12px;font-family:var(--mono);color:var(--red)">-${fmt(caja.extrasViajeCaja)}</span></div>
+      <div class="card-row"><span class="card-label">Gastos mensuales</span><span style="font-size:12px;font-family:var(--mono);color:var(--red)">-${fmt(caja.gastosCaja)}</span></div>
+      <div class="card-row"><span class="card-label">Nóminas</span><span style="font-size:12px;font-family:var(--mono);color:var(--red)">-${fmt(caja.nominasCaja)}</span></div>
+    </div>
   </div>
 
   <div class="section">
@@ -752,14 +814,19 @@ window.editViaje = function(id) {
     ${gastosExtra.length ? gastosExtra.map((g,i) => '<div class="card-row"><span class="card-label">'+g.concepto+(g.descripcion?' — '+g.descripcion:'')+' · '+fmtDate(g.fecha)+'</span><div style="display:flex;align-items:center;gap:8px"><span class="card-val" style="color:var(--red)">-'+fmt(g.monto)+'</span><button onclick="borrarGastoExtra(\''+id+'\','+i+')" style="background:var(--red-light);border:none;color:var(--red);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">×</button></div></div>').join('') : '<p style="font-size:13px;color:var(--muted);margin-bottom:8px">Sin gastos en camino</p>'}
     ${totalGastosExtra > 0 ? '<div class="card-row" style="margin-top:4px"><span class="card-label">Total gastos extra</span><span class="card-val" style="color:var(--red)">-'+fmt(totalGastosExtra)+'</span></div>' : ''}
     <div class="divider"></div>
-    <div class="card-row"><span class="card-label">Por cobrar</span><span class="card-val" style="color:${vencido?'var(--red)':deuda>0?'var(--amber)':'var(--green)'}">${fmt(deuda)}</span></div>
-    ${v.fechaVence ? '<div class="card-row"><span class="card-label">Vence</span><span style="color:'+(vencido?'var(--red)':'var(--amber)')+'">'+fmtDate(v.fechaVence)+'</span></div>' : ''}
+    <div class="section-title">Cuenta del cliente</div>
+    ${v.anticipo > 0 ? '<div class="card-row"><span class="card-label">Anticipo recibido</span><span class="card-val" style="color:var(--green)">-'+fmt(v.anticipo)+'</span></div>' : ''}
+    ${cobros.length ? cobros.map(c => '<div class="card-row"><span class="card-label">Cobro '+fmtDate(c.fecha)+' · '+(c.forma||'')+'</span><span class="card-val" style="color:var(--green)">-'+fmt(c.monto)+'</span></div>').join('') : ''}
+    <div class="card-row" style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
+      <span style="font-weight:600">Saldo por cobrar</span>
+      <span class="card-val" style="color:${vencido?'var(--red)':deuda>0?'var(--amber)':'var(--green)'}">
+        ${deuda > 0 ? fmt(deuda) : '✓ Liquidado'}
+      </span>
+    </div>
+    ${v.fechaVence ? '<div class="card-row"><span class="card-label">Fecha vencimiento</span><span style="color:'+(vencido?'var(--red)':'var(--amber)')+'">'+fmtDate(v.fechaVence)+'</span></div>' : ''}
     <div class="divider"></div>
-    <div class="section-title">Aportaciones</div>
-    ${aports.length ? aports.map(a => '<div class="card-row"><span>'+chipOwner(a.quien)+'</span><span class="card-val">'+fmt(a.monto)+'</span></div>').join('') : '<p style="font-size:13px;color:var(--muted);margin-bottom:8px">Sin aportaciones</p>'}
-    <div class="divider"></div>
-    <div class="section-title">Cobros recibidos</div>
-    ${cobros.length ? cobros.map(c => '<div class="card-row"><span class="card-label">'+fmtDate(c.fecha)+' · '+(c.forma||'')+'</span><span class="card-val" style="color:var(--green)">'+fmt(c.monto)+'</span></div>').join('') : '<p style="font-size:13px;color:var(--muted);margin-bottom:8px">Sin cobros</p>'}
+    <div class="section-title">Financiamiento</div>
+    ${aports.filter(a=>a.quien!=='cliente').length ? aports.filter(a=>a.quien!=='cliente').map(a => '<div class="card-row"><span>'+chipOwner(a.quien)+'</span><span class="card-val">'+fmt(a.monto)+'</span></div>').join('') : '<p style="font-size:13px;color:var(--muted);margin-bottom:8px">Sin aportaciones de socios</p>'}
     <div style="height:12px"></div>
     ${deuda > 0 ? '<button class="btn btn-primary" onclick="abrirAbono(\''+id+'\')">Registrar cobro</button><div style="height:8px"></div>' : ''}
     <button class="btn btn-ghost" onclick="formViaje('${id}')">Editar viaje</button>
@@ -851,8 +918,9 @@ window.delViajeNIP = function(id) {
 
 
 let _arowCount = 0;
+// Quitar anticipo cliente de aportRow — solo socios y caja
 function aportRow(i, a) {
-  return '<div class="apor-row" id="arow-'+i+'"><select class="form-select" id="aq-'+i+'" style="flex:0 0 130px"><option value="caja"'+(a.quien==='caja'?' selected':'')+'>Caja común</option><option value="uriel"'+(a.quien==='uriel'?' selected':'')+'>Uriel</option><option value="kike"'+(a.quien==='kike'?' selected':'')+'>Kike</option><option value="cliente"'+(a.quien==='cliente'?' selected':'')+'>Anticipo cliente</option></select><input class="form-input" type="number" id="am-'+i+'" placeholder="Monto $" value="'+(a.monto||'')+'"><button style="background:var(--red-light);border:none;color:var(--red);width:32px;height:32px;border-radius:8px;font-size:16px;cursor:pointer;flex-shrink:0" onclick="document.getElementById(\'arow-'+i+'\').remove()">×</button></div>';
+  return '<div class="apor-row" id="arow-'+i+'"><select class="form-select" id="aq-'+i+'" style="flex:0 0 130px"><option value="caja"'+(a.quien==='caja'?' selected':'')+'>Caja común</option><option value="uriel"'+(a.quien==='uriel'?' selected':'')+'>Uriel</option><option value="kike"'+(a.quien==='kike'?' selected':'')+'>Kike</option></select><input class="form-input" type="number" id="am-'+i+'" placeholder="Monto $" value="'+(a.monto||'')+'"><button style="background:var(--red-light);border:none;color:var(--red);width:32px;height:32px;border-radius:8px;font-size:16px;cursor:pointer;flex-shrink:0" onclick="document.getElementById(\'arow-'+i+'\').remove()">×</button></div>';
 }
 
 window.addAportRow = function() {
@@ -909,8 +977,17 @@ function formViaje(editId) {
       <div class="form-group"><label class="form-label">COMBUSTIBLE ($)</label><input class="form-input" type="number" id="f-combustible" placeholder="0" value="${v.combustible||''}"></div>
     </div>
     <div class="form-group"><label class="form-label">OTROS GASTOS ($)</label><input class="form-input" type="number" id="f-otros" placeholder="0" value="${v.otrosGastos||''}"></div>
+
     <div class="divider"></div>
-    <div class="section-title" style="margin-bottom:10px">Financiamiento del viaje</div>
+    <div class="section-title" style="margin-bottom:6px">Anticipo del cliente</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Este monto entra a caja común y se descuenta del saldo por cobrar automáticamente.</div>
+    <div class="form-group"><label class="form-label">ANTICIPO RECIBIDO ($)</label>
+      <input class="form-input" type="number" id="f-anticipo" placeholder="0" value="${v.anticipo||''}">
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-title" style="margin-bottom:6px">Financiamiento del viaje</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">¿Quién puso el dinero para los gastos del viaje? (caja, Uriel, Kike o combinación)</div>
     <div id="aports-container">${(v.aportaciones||[{quien:'caja',monto:''}]).map((a,i) => aportRow(i,a)).join('')}</div>
     <button class="btn btn-ghost btn-sm" style="margin-bottom:16px" onclick="addAportRow()">+ Agregar fuente</button>
     <button class="btn btn-primary" onclick="saveViaje('${editId||''}')">Guardar viaje</button>
@@ -938,6 +1015,7 @@ window.saveViaje = function(editId) {
   const pctChofer = parseFloat($('f-pct') ? $('f-pct').value : 0) || 0;
   const viatico = parseFloat($('f-viatico') ? $('f-viatico').value : 0) || 0;
   const km = parseFloat($('f-km') ? $('f-km').value : 0) || 0;
+  const anticipo = parseFloat($('f-anticipo') ? $('f-anticipo').value : 0) || 0;
   if (!origen || !destino || !flete) { alert('Ruta y flete son obligatorios'); return; }
 
   const aports = [];
@@ -950,7 +1028,7 @@ window.saveViaje = function(editId) {
 
   const viajes = DB.get('viajes');
   const id = editId || DB.id();
-  const data = { id, fecha, origen, destino, unidadId, operadorId, clienteId, flete, fechaVence, casetas, combustible, otrosGastos, pctChofer, viatico, km };
+  const data = { id, fecha, origen, destino, unidadId, operadorId, clienteId, flete, fechaVence, casetas, combustible, otrosGastos, pctChofer, viatico, km, anticipo };
 
   if (editId) {
     const idx = viajes.findIndex(v => v.id === editId);
@@ -1111,15 +1189,17 @@ window.abrirAbono = function(viajeId, montoSugerido) {
   const yaU = DB.get('cobros').filter(c => c.viajeId === viajeId).reduce((s,c) => s + Number(c.recuperaUriel||0), 0);
   const yaK = DB.get('cobros').filter(c => c.viajeId === viajeId).reduce((s,c) => s + Number(c.recuperaKike||0), 0);
   const sugerido = montoSugerido || deuda;
+  const anticipo = Number(viaje ? viaje.anticipo||0 : 0);
 
   openSheet('Registrar pago', `
     <div class="alert alert-blue" style="margin-bottom:12px">
       <strong>${cliente ? cliente.nombre : 'Cliente'}</strong><br>
       ${viaje ? viaje.origen+'→'+viaje.destino+' · '+fmtDate(viaje.fecha) : ''}
     </div>
-    <div class="card-row" style="margin-bottom:14px">
-      <span class="card-label">Saldo pendiente</span>
-      <span class="card-val" style="color:var(--amber)">${fmt(deuda)}</span>
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-row"><span class="card-label">Flete total</span><span class="card-val">${fmt(viaje ? viaje.flete : 0)}</span></div>
+      ${anticipo > 0 ? '<div class="card-row"><span class="card-label">Anticipo aplicado</span><span class="card-val" style="color:var(--green)">-'+fmt(anticipo)+'</span></div>' : ''}
+      <div class="card-row" style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px"><span style="font-weight:600">Saldo por cobrar</span><span class="card-val" style="color:var(--amber)">${fmt(deuda)}</span></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:14px">
       <button class="btn btn-ghost btn-sm" onclick="setMonto(${deuda})" style="flex:1;border-color:var(--blue);color:var(--blue)">Total ${fmt(deuda)}</button>
@@ -1316,7 +1396,9 @@ function calcMetricasUnidad(unidadId, mes) {
   const gastosViaje = viajes.reduce((s,v) => s + Number(v.casetas||0) + Number(v.combustible||0) + Number(v.viatico||0), 0);
   const sueldoChoferes = viajes.reduce((s,v) => s + (Number(v.flete||0) * Number(v.pctChofer||0) / 100), 0);
   const gastosDirect = gastos.filter(g => g.unidadId === unidadId && g.fecha && g.fecha.startsWith(mes)).reduce((s,g) => s + Number(g.monto||0), 0);
-  const gastosGen = gastos.filter(g => !g.unidadId && g.fecha && g.fecha.startsWith(mes)).reduce((s,g) => s + Number(g.monto||0), 0);
+  // Solo gastos operativos reales se prorratean — excluye migraciones y "Otro" sin unidad
+  const conceptosOperativos = ['Patio','GPS','Seguro','Mantenimiento','Descompostura'];
+  const gastosGen = gastos.filter(g => !g.unidadId && g.fecha && g.fecha.startsWith(mes) && conceptosOperativos.includes(g.concepto)).reduce((s,g) => s + Number(g.monto||0), 0);
   const gastosProrr = gastosGen / nUnidades;
   const costoTotal = gastosViaje + sueldoChoferes + gastosDirect + gastosProrr;
   const utilidad = ingresos - costoTotal;
@@ -1504,7 +1586,16 @@ function htmlConfig() {
         <button class="btn btn-ghost btn-sm" onclick="${tieneNIP ? 'cambiarNIP()' : 'pedirNIP(()=>{})'}">${tieneNIP ? 'Cambiar NIP' : 'Crear NIP'}</button>
       </div>
     </div>
-    <div class="section-title" style="margin-top:16px">Datos de prueba</div>
+
+    <div class="section-title" style="margin-top:16px">Respaldo en Excel</div>
+    <div class="card">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:12px">
+        Exporta todos los viajes, cobros, gastos y nóminas a un archivo Excel con múltiples hojas.
+      </div>
+      <button class="btn btn-primary" onclick="exportarExcel()">📊 Exportar a Excel</button>
+    </div>
+
+    <div class="section-title" style="margin-top:16px">Zona de peligro</div>
     <div class="card" style="border-color:#fca5a5">
       <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Borra <strong>todos</strong> los datos de la app. Útil para limpiar simulaciones.</div>
       <button class="btn btn-danger" onclick="resetTodo()">🗑 Borrar todos los datos</button>
@@ -1628,6 +1719,148 @@ function quickAdd(tipo) {
   else if (tipo === 'cliente') formCliente();
   else if (tipo === 'corte') iniciarCorte();
 }
+
+// ══════════════════════════════════════════════════════
+// EXPORTAR A EXCEL
+// ══════════════════════════════════════════════════════
+window.exportarExcel = async function() {
+  // Cargar SheetJS dinámicamente
+  if (!window.XLSX) {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    document.head.appendChild(script);
+    await new Promise(r => script.onload = r);
+  }
+
+  const wb = XLSX.utils.book_new();
+  const clientes = DB.get('clientes');
+  const unidades = DB.get('unidades');
+  const operadores = DB.get('operadores');
+  const cobros = DB.get('cobros');
+  const nominas = DB.get('nominas');
+
+  // ── Hoja 1: VIAJES ──
+  const viajes = DB.get('viajes').map(v => {
+    const cliente = clientes.find(c => c.id === v.clienteId);
+    const unidad = unidades.find(u => u.id === v.unidadId);
+    const op = operadores.find(o => o.id === v.operadorId);
+    const cobrado = cobros.filter(c => c.viajeId === v.id).reduce((s,c) => s + Number(c.monto), 0);
+    const anticipo = Number(v.anticipo||0);
+    const deuda = Math.max(0, Number(v.flete||0) - anticipo - cobrado);
+    const gastosExtra = (v.gastosExtra||[]).reduce((s,g) => s + Number(g.monto||0), 0);
+    const pagoChofer = (Number(v.flete||0) * Number(v.pctChofer||0) / 100);
+    return {
+      'Fecha': v.fecha || '',
+      'Origen': v.origen || '',
+      'Destino': v.destino || '',
+      'Cliente': cliente ? cliente.nombre : '',
+      'Unidad': unidad ? unidad.nombre : '',
+      'Operador': op ? op.nombre : '',
+      'Km': Number(v.km||0),
+      'Flete': Number(v.flete||0),
+      'Anticipo cliente': anticipo,
+      'Casetas': Number(v.casetas||0),
+      'Combustible': Number(v.combustible||0),
+      'Viático': Number(v.viatico||0),
+      'Gastos en camino': gastosExtra,
+      'Otros gastos': Number(v.otrosGastos||0),
+      '% Chofer': Number(v.pctChofer||0),
+      'Pago chofer estimado': pagoChofer,
+      'Total cobrado': cobrado + anticipo,
+      'Saldo por cobrar': deuda,
+      'Fecha vencimiento': v.fechaVence || '',
+      'Estado': v.estado || 'completado',
+    };
+  });
+  const ws1 = XLSX.utils.json_to_sheet(viajes);
+  // Anchos de columna
+  ws1['!cols'] = [10,12,12,18,14,16,8,12,14,10,12,10,14,12,8,16,14,14,16,12].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws1, 'Viajes');
+
+  // ── Hoja 2: COBROS ──
+  const cobrosData = cobros.map(c => {
+    const viaje = DB.get('viajes').find(v => v.id === c.viajeId);
+    const cliente = viaje ? clientes.find(x => x.id === viaje.clienteId) : null;
+    return {
+      'Fecha': c.fecha || '',
+      'Cliente': cliente ? cliente.nombre : '',
+      'Ruta': viaje ? (viaje.origen+' → '+viaje.destino) : '',
+      'Monto cobrado': Number(c.monto||0),
+      'Forma de pago': c.forma || '',
+      'Recupera Uriel': Number(c.recuperaUriel||0),
+      'Recupera Kike': Number(c.recuperaKike||0),
+      'Utilidad negocio': Number(c.utilidad||0),
+      'Notas': c.notas || '',
+    };
+  });
+  const ws2 = XLSX.utils.json_to_sheet(cobrosData.length ? cobrosData : [{'Sin cobros registrados':''}]);
+  ws2['!cols'] = [10,18,22,14,14,14,14,14,20].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws2, 'Cobros');
+
+  // ── Hoja 3: GASTOS ──
+  const gastos = DB.get('gastos').map(g => {
+    const unidad = unidades.find(u => u.id === g.unidadId);
+    return {
+      'Fecha': g.fecha || '',
+      'Concepto': g.concepto || '',
+      'Descripción': g.descripcion || '',
+      'Unidad': unidad ? unidad.nombre : 'General',
+      'Monto': Number(g.monto||0),
+      'Pagado por': g.quien || '',
+    };
+  });
+  const ws3 = XLSX.utils.json_to_sheet(gastos.length ? gastos : [{'Sin gastos':''}]);
+  ws3['!cols'] = [10,16,28,14,12,12].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws3, 'Gastos');
+
+  // ── Hoja 4: NÓMINA ──
+  const nominasData = nominas.map(n => {
+    const op = operadores.find(o => o.id === n.operadorId);
+    return {
+      'Semana inicio': n.semanaIni || '',
+      'Semana fin': n.semanaFin || '',
+      'Operador': op ? op.nombre : '',
+      'Total pagado': Number(n.total||0),
+      'Pagado por': n.quien || '',
+      'Forma': n.forma || '',
+      'Notas': n.notas || '',
+    };
+  });
+  const ws4 = XLSX.utils.json_to_sheet(nominasData.length ? nominasData : [{'Sin nóminas':''}]);
+  ws4['!cols'] = [12,12,18,14,12,12,20].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws4, 'Nómina');
+
+  // ── Hoja 5: RESUMEN ──
+  const totalFlete = DB.get('viajes').reduce((s,v) => s + Number(v.flete||0), 0);
+  const totalCobrado = cobros.reduce((s,c) => s + Number(c.monto||0), 0);
+  const totalAnticip = DB.get('viajes').reduce((s,v) => s + Number(v.anticipo||0), 0);
+  const totalGastos = DB.get('gastos').reduce((s,g) => s + Number(g.monto||0), 0);
+  const totalNomina = nominas.reduce((s,n) => s + Number(n.total||0), 0);
+  const porCobrar = DB.get('viajes').reduce((s,v) => s + viajeDeuda(v.id), 0);
+  const saldo = saldoBalance();
+
+  const resumen = [
+    {'Concepto': 'Total fletes emitidos', 'Monto': totalFlete},
+    {'Concepto': 'Total anticipos recibidos', 'Monto': totalAnticip},
+    {'Concepto': 'Total cobrado', 'Monto': totalCobrado},
+    {'Concepto': 'Saldo por cobrar', 'Monto': porCobrar},
+    {'Concepto': '', 'Monto': ''},
+    {'Concepto': 'Total gastos registrados', 'Monto': totalGastos},
+    {'Concepto': 'Total nóminas pagadas', 'Monto': totalNomina},
+    {'Concepto': '', 'Monto': ''},
+    {'Concepto': 'Saldo a favor Uriel', 'Monto': saldo.uriel},
+    {'Concepto': 'Saldo a favor Kike', 'Monto': saldo.kike},
+    {'Concepto': '', 'Monto': ''},
+    {'Concepto': 'Exportado el', 'Monto': today()},
+  ];
+  const ws5 = XLSX.utils.json_to_sheet(resumen);
+  ws5['!cols'] = [{wch:28},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, ws5, 'Resumen');
+
+  // Descargar
+  const fecha = today().replace(/-/g,'');
+  XLSX.writeFile(wb, `argos-respaldo-${fecha}.xlsx`);
+};
 
 // ══════════════════════════════════════════════════════
 // INIT
