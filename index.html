@@ -40,11 +40,24 @@ async function sincronizarDesdeFirestore() {
   const indicador = document.getElementById('sync-status');
   if (indicador) { indicador.textContent = '☁ Sincronizando...'; indicador.style.color = '#d97706'; }
   try {
+    // Contar total de documentos en Firebase antes de sobreescribir
+    let totalDocs = 0;
+    const snaps = {};
     for (const col of COLECCIONES) {
       const snap = await db.collection(col).get();
-      localStorage.setItem(col, JSON.stringify(snap.docs.map(d => d.data())));
+      snaps[col] = snap;
+      totalDocs += snap.docs.length;
     }
-    if (indicador) { indicador.textContent = '☁ En linea'; indicador.style.color = '#16a34a'; }
+    // Solo sobreescribir localStorage si Firebase tiene datos
+    // Así evitamos borrar datos locales si Firebase está vacío
+    if (totalDocs > 0) {
+      for (const col of COLECCIONES) {
+        localStorage.setItem(col, JSON.stringify(snaps[col].docs.map(d => d.data())));
+      }
+      if (indicador) { indicador.textContent = '☁ En linea'; indicador.style.color = '#16a34a'; }
+    } else {
+      if (indicador) { indicador.textContent = '☁ En linea (local)'; indicador.style.color = '#16a34a'; }
+    }
     if (window._renderApp) window._renderApp();
   } catch(e) {
     if (indicador) { indicador.textContent = '⚠ Sin conexion'; indicador.style.color = '#dc2626'; }
