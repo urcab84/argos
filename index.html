@@ -899,7 +899,7 @@ window.editViaje = function(id) {
     ${aports.filter(a=>a.quien!=='cliente').length ? aports.filter(a=>a.quien!=='cliente').map(a => '<div class="card-row"><span>'+chipOwner(a.quien)+'</span><span class="card-val">'+fmt(a.monto)+'</span></div>').join('') : '<p style="font-size:13px;color:var(--muted);margin-bottom:8px">Sin aportaciones de socios</p>'}
     <div style="height:12px"></div>
     ${deuda > 0 ? '<button class="btn btn-primary" onclick="abrirAbono(\''+id+'\')">Registrar cobro</button><div style="height:8px"></div>' : ''}
-    ${puedo('editar') ? '<button class="btn btn-ghost" onclick="formViaje(\''+id+'\')">Editar viaje</button><div style="height:8px"></div>' : ''}
+    ${puedo('editar') ? '<button class="btn btn-ghost" onclick="editarViajeNIP(\''+id+'\')">Editar viaje</button><div style="height:8px"></div>' : ''}
     ${puedo('borrar') ? '<button class="btn btn-danger btn-sm" style="width:100%" onclick="delViajeNIP(\''+id+'\')">🗑 Eliminar viaje</button>' : ''}
   `);
 };
@@ -1748,6 +1748,10 @@ function htmlUnidades() {
   const items = DB.get('unidades');
   return '<div class="section" style="padding-top:14px"><button class="btn btn-ghost" style="margin-bottom:14px" onclick="formUnidad()">+ Nueva unidad</button>'+items.map(u => '<div class="card"><div class="card-row"><strong>'+u.nombre+'</strong><button class="btn btn-ghost btn-sm" onclick="formUnidad(\''+u.id+'\')">Editar</button></div>'+(u.placas?'<div class="card-label">Placas: '+u.placas+'</div>':'')+(u.modelo?'<div class="card-label">'+u.modelo+'</div>':'')+'</div>').join('')+'<div style="height:8px"></div></div>';
 }
+
+window.editarViajeNIP = function(id) {
+  pedirNIP(() => formViaje(id));
+};
 
 window.formUnidad = function(editId) {
   const u = editId ? (DB.get('unidades').find(x=>x.id===editId)||{}) : {};
