@@ -423,10 +423,18 @@ function chipOwner(quien) {
 }
 
 function semanaActual() {
-  const d = new Date();
-  const dom = new Date(d); dom.setDate(d.getDate() - d.getDay());
-  const sab = new Date(d); sab.setDate(d.getDate() + (6 - d.getDay()));
-  const iso = dt => dt.toISOString().slice(0,10);
+  const ahora = new Date();
+  // Usar fecha local para evitar problema de zona horaria
+  const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+  const diaSemana = hoy.getDay(); // 0=dom, 1=lun ... 6=sab
+  const dom = new Date(hoy); dom.setDate(hoy.getDate() - diaSemana);
+  const sab = new Date(hoy); sab.setDate(hoy.getDate() + (6 - diaSemana));
+  const iso = dt => {
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth()+1).padStart(2,'0');
+    const d = String(dt.getDate()).padStart(2,'0');
+    return y+'-'+m+'-'+d;
+  };
   return { ini: iso(dom), fin: iso(sab) };
 }
 
