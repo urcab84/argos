@@ -1057,7 +1057,7 @@ function formViaje(editId) {
     <div class="divider"></div>
     <div class="section-title" style="margin-bottom:6px">Financiamiento del viaje</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px">¿Quién puso el dinero para los gastos del viaje? (caja, Uriel, Kike o combinación)</div>
-    <div id="aports-container">${(v.aportaciones||[{quien:'caja',monto:''}]).map((a,i) => aportRow(i,a)).join('')}</div>
+    <div id="aports-container">${(editId ? DB.get('aportaciones').filter(a => a.viajeId === editId && a.quien !== 'cliente') : [{quien:'caja',monto:''}]).map((a,i) => aportRow(i,a)).join('') || aportRow(0,{quien:'caja',monto:''})}</div>
     <button class="btn btn-ghost btn-sm" style="margin-bottom:16px" onclick="addAportRow()">+ Agregar fuente</button>
     <button class="btn btn-primary" onclick="saveViaje('${editId||''}')">Guardar viaje</button>
   `);
