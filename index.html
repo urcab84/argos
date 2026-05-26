@@ -1008,7 +1008,15 @@ function formViaje(editId) {
   const clientes = DB.get('clientes');
   const defPct = v.pctChofer !== undefined ? v.pctChofer : (operadores.find(o => o.id === v.operadorId) ? operadores.find(o => o.id === v.operadorId).porcentaje : '');
   _arowCount = 0;
-  openSheet(editId ? 'Editar viaje' : 'Nuevo viaje', `
+
+  // Cargar aportaciones existentes — buscar en localStorage primero
+  const aportsExistentes = editId
+    ? DB.get('aportaciones').filter(a => a.viajeId === editId && a.quien !== 'cliente')
+    : [];
+
+  // Si no hay aportaciones en local, intentar cargar de Firebase
+  const mostrarForm = (aportsIniciales) => {
+    openSheet(editId ? 'Editar viaje' : 'Nuevo viaje', `
     <div class="form-group"><label class="form-label">FECHA</label><input class="form-input" type="date" id="f-fecha" value="${v.fecha||today()}"></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">ORIGEN</label><input class="form-input" type="text" id="f-origen" placeholder="Ciudad" value="${v.origen||''}"></div>
@@ -1046,21 +1054,33 @@ function formViaje(editId) {
       <div class="form-group"><label class="form-label">COMBUSTIBLE ($)</label><input class="form-input" type="number" id="f-combustible" placeholder="0" value="${v.combustible||''}"></div>
     </div>
     <div class="form-group"><label class="form-label">OTROS GASTOS ($)</label><input class="form-input" type="number" id="f-otros" placeholder="0" value="${v.otrosGastos||''}"></div>
-
-    <div class="divider"></div>
-    <div class="section-title" style="margin-bottom:6px">Anticipo del cliente</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Este monto entra a caja común y se descuenta del saldo por cobrar automáticamente.</div>
     <div class="form-group"><label class="form-label">ANTICIPO RECIBIDO ($)</label>
       <input class="form-input" type="number" id="f-anticipo" placeholder="0" value="${v.anticipo||''}">
     </div>
-
     <div class="divider"></div>
     <div class="section-title" style="margin-bottom:6px">Financiamiento del viaje</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">¿Quién puso el dinero para los gastos del viaje? (caja, Uriel, Kike o combinación)</div>
-    <div id="aports-container">${(editId ? DB.get('aportaciones').filter(a => a.viajeId === editId && a.quien !== 'cliente') : [{quien:'caja',monto:''}]).map((a,i) => aportRow(i,a)).join('') || aportRow(0,{quien:'caja',monto:''})}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">¿Quién puso el dinero para los gastos del viaje?</div>
+    <div id="aports-container">${(aportsIniciales.length ? aportsIniciales : [{quien:'caja',monto:''}]).map((a,i) => aportRow(i,a)).join('')}</div>
     <button class="btn btn-ghost btn-sm" style="margin-bottom:16px" onclick="addAportRow()">+ Agregar fuente</button>
     <button class="btn btn-primary" onclick="saveViaje('${editId||''}')">Guardar viaje</button>
   `);
+  };
+
+  // Si editando y no hay aportaciones en local, intentar traer de Firebase
+  if (editId && aportsExistentes.length === 0 && window.db) {
+    db.collection('aportaciones').where('viajeId', '==', editId).get().then(snap => {
+      const fromFB = snap.docs.map(d => d.data()).filter(a => a.quien !== 'cliente');
+      // Actualizar localStorage con lo de Firebase
+      if (fromFB.length > 0) {
+        let aps = DB.get('aportaciones').filter(a => a.viajeId !== editId);
+        aps = aps.concat(fromFB);
+        localStorage.setItem('aportaciones', JSON.stringify(aps));
+      }
+      mostrarForm(fromFB.length > 0 ? fromFB : []);
+    }).catch(() => mostrarForm([]));
+  } else {
+    mostrarForm(aportsExistentes);
+  }
 }
 
 window.precargarPct = function(sel) {
