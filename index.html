@@ -613,6 +613,35 @@ function renderDashboard() {
   </div>
 
   <div class="section">
+    <div class="section-title">Salud financiera</div>
+    ${(() => {
+      const totalSaldos = saldo.uriel + saldo.kike;
+      const diferencia = porCobrar - totalSaldos;
+      const enCeros = diferencia >= 0;
+      const pct = totalSaldos > 0 ? Math.min(100, Math.round((porCobrar / totalSaldos) * 100)) : 100;
+      return `<div class="card" style="border-left:3px solid ${enCeros?'var(--green)':'var(--red)'}">
+        <div class="card-row">
+          <div>
+            <div style="font-size:13px;font-weight:600">${enCeros ? '✓ Cartera cubre los saldos' : 'Déficit pendiente de cubrir'}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${enCeros ? 'Al cobrar todo queda excedente' : 'Aunque cobres todo, falta:'}</div>
+          </div>
+          <div style="font-size:22px;font-weight:700;font-family:var(--mono);color:${enCeros?'var(--green)':'var(--red)'}">${enCeros ? '+'+fmt(diferencia) : fmt(diferencia)}</div>
+        </div>
+        <div style="margin-top:10px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px">
+            <span>Cartera ${fmt(porCobrar)}</span>
+            <span>Saldos ${fmt(totalSaldos)}</span>
+          </div>
+          <div style="height:6px;background:var(--bg4);border-radius:99px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:${enCeros?'var(--green)':'var(--red)'};border-radius:99px;transition:width 0.3s"></div>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">La cartera cubre el ${pct}% de los saldos a favor</div>
+        </div>
+      </div>`;
+    })()}
+  </div>
+
+  <div class="section">
     <div class="section-title">Nómina semana actual</div>
     ${renderNominaDash()}
   </div>
