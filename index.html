@@ -1123,15 +1123,34 @@ window.saveViaje = function(editId) {
     const idx = viajes.findIndex(v => v.id === editId);
     if (idx >= 0) viajes[idx] = Object.assign({}, viajes[idx], data);
     DB.set('viajes', viajes);
+    // Borrar aportaciones anteriores de este viaje y agregar nuevas
     let aps = DB.get('aportaciones').filter(a => a.viajeId !== editId);
-    aports.forEach(a => aps.push({ id: DB.id(), viajeId: editId, fecha, ...a }));
-    DB.set('aportaciones', aps);
+    const nuevasAps = aports.map(a => ({ id: DB.id(), viajeId: editId, fecha, ...a }));
+    nuevasAps.forEach(a => aps.push(a));
+    localStorage.setItem('aportaciones', JSON.stringify(aps));
+    // Guardar en Firebase directamente cada aportación nueva
+    if (window.db) {
+      // Borrar las antiguas de este viaje en Firebase
+      db.collection('aportaciones').where('viajeId', '==', editId).get().then(snap => {
+        const batch = db.batch();
+        snap.docs.forEach(d => batch.delete(d.ref));
+        nuevasAps.forEach(a => batch.set(db.collection('aportaciones').doc(a.id), a));
+        return batch.commit();
+      }).catch(e => console.warn('Error guardando aportaciones:', e));
+    }
   } else {
     viajes.push(data);
     DB.set('viajes', viajes);
     let aps = DB.get('aportaciones');
-    aports.forEach(a => aps.push({ id: DB.id(), viajeId: id, fecha, ...a }));
-    DB.set('aportaciones', aps);
+    const nuevasAps = aports.map(a => ({ id: DB.id(), viajeId: id, fecha, ...a }));
+    nuevasAps.forEach(a => aps.push(a));
+    localStorage.setItem('aportaciones', JSON.stringify(aps));
+    // Guardar en Firebase directamente
+    if (window.db) {
+      const batch = db.batch();
+      nuevasAps.forEach(a => batch.set(db.collection('aportaciones').doc(a.id), a));
+      batch.commit().catch(e => console.warn('Error guardando aportaciones:', e));
+    }
   }
   closeSheet(); render();
 };
