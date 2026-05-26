@@ -1497,7 +1497,24 @@ window.formGasto = function() {
 
 window.delGastoNIP = function(id) {
   pedirNIP(() => {
-    DB.set('gastos', DB.get('gastos').filter(g => g.id !== id));
+    // Borrar el gasto
+    const gastos = DB.get('gastos');
+    const gasto = gastos.find(g => g.id === id);
+    DB.set('gastos', gastos.filter(g => g.id !== id));
+    // Borrar también la aportación asociada si existe
+    const aps = DB.get('aportaciones');
+    const apsLimpias = aps.filter(a => !(a.viajeId === null && a.concepto === 'gasto-'+(gasto ? gasto.concepto : '') && a.monto === (gasto ? gasto.monto : -1) && a.fecha === (gasto ? gasto.fecha : '')));
+    DB.set('aportaciones', apsLimpias);
+    // Borrar en Firebase también
+    if (window.db && gasto) {
+      db.collection('aportaciones')
+        .where('concepto', '==', 'gasto-'+gasto.concepto)
+        .where('monto', '==', gasto.monto)
+        .where('fecha', '==', gasto.fecha)
+        .get().then(snap => {
+          snap.docs.forEach(d => d.ref.delete());
+        }).catch(e => console.warn('Error borrando aportación:', e));
+    }
     render();
   });
 };
