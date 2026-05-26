@@ -1497,23 +1497,18 @@ window.formGasto = function() {
 
 window.delGastoNIP = function(id) {
   pedirNIP(() => {
-    // Borrar el gasto
     const gastos = DB.get('gastos');
-    const gasto = gastos.find(g => g.id === id);
     DB.set('gastos', gastos.filter(g => g.id !== id));
-    // Borrar también la aportación asociada si existe
+    // Borrar aportación asociada por gastoId
     const aps = DB.get('aportaciones');
-    const apsLimpias = aps.filter(a => !(a.viajeId === null && a.concepto === 'gasto-'+(gasto ? gasto.concepto : '') && a.monto === (gasto ? gasto.monto : -1) && a.fecha === (gasto ? gasto.fecha : '')));
-    DB.set('aportaciones', apsLimpias);
-    // Borrar en Firebase también
-    if (window.db && gasto) {
-      db.collection('aportaciones')
-        .where('concepto', '==', 'gasto-'+gasto.concepto)
-        .where('monto', '==', gasto.monto)
-        .where('fecha', '==', gasto.fecha)
-        .get().then(snap => {
-          snap.docs.forEach(d => d.ref.delete());
-        }).catch(e => console.warn('Error borrando aportación:', e));
+    const aBorrar = aps.filter(a => a.gastoId === id);
+    DB.set('aportaciones', aps.filter(a => a.gastoId !== id));
+    // Borrar en Firebase
+    if (window.db && aBorrar.length > 0) {
+      aBorrar.forEach(a => {
+        db.collection('aportaciones').doc(a.id).delete()
+          .catch(e => console.warn('Error borrando aportación:', e));
+      });
     }
     render();
   });
@@ -1531,8 +1526,9 @@ window.saveGasto = function() {
   gastos.push({ id: DB.id(), fecha, concepto, descripcion, monto, quien, unidadId });
   DB.set('gastos', gastos);
   if (quien === 'uriel' || quien === 'kike') {
+    const nuevoGastoId = gastos[gastos.length-1].id;
     const aps = DB.get('aportaciones');
-    aps.push({ id: DB.id(), viajeId: null, quien, monto, fecha, concepto: 'gasto-'+concepto });
+    aps.push({ id: DB.id(), viajeId: null, quien, monto, fecha, concepto: 'gasto-'+concepto, gastoId: nuevoGastoId });
     DB.set('aportaciones', aps);
   }
   closeSheet(); render();
