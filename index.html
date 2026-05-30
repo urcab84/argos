@@ -1152,6 +1152,11 @@ window.saveViaje = function(editId) {
     const idx = viajes.findIndex(v => v.id === editId);
     if (idx >= 0) viajes[idx] = Object.assign({}, viajes[idx], data);
     DB.set('viajes', viajes);
+    // Guardar viaje directamente en Firebase
+    if (window.db) {
+      db.collection('viajes').doc(editId).set(viajes[viajes.findIndex(v => v.id === editId)])
+        .catch(e => console.warn('Error guardando viaje:', e));
+    }
     // Borrar aportaciones anteriores de este viaje y agregar nuevas
     let aps = DB.get('aportaciones').filter(a => a.viajeId !== editId);
     const nuevasAps = aports.map(a => ({ id: DB.id(), viajeId: editId, fecha, ...a }));
@@ -1159,7 +1164,6 @@ window.saveViaje = function(editId) {
     localStorage.setItem('aportaciones', JSON.stringify(aps));
     // Guardar en Firebase directamente cada aportación nueva
     if (window.db) {
-      // Borrar las antiguas de este viaje en Firebase
       db.collection('aportaciones').where('viajeId', '==', editId).get().then(snap => {
         const batch = db.batch();
         snap.docs.forEach(d => batch.delete(d.ref));
