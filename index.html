@@ -984,11 +984,23 @@ window.saveGastoExtra = function(viajeId) {
   if (idx < 0) return;
   if (!viajes[idx].gastosExtra) viajes[idx].gastosExtra = [];
   viajes[idx].gastosExtra.push({ fecha, concepto, descripcion, monto, quien });
-  DB.set('viajes', viajes);
+  // Guardar viaje directamente en Firebase
+  const viajeActualizado = viajes[idx];
+  localStorage.setItem('viajes', JSON.stringify(viajes));
+  if (window.db) {
+    db.collection('viajes').doc(viajeId).set(viajeActualizado)
+      .catch(e => console.warn('Error guardando gasto extra:', e));
+  }
   if (quien === 'uriel' || quien === 'kike') {
+    const nuevaAp = { id: DB.id(), viajeId, quien, monto, fecha, concepto: 'extra-'+concepto };
     const aps = DB.get('aportaciones');
-    aps.push({ id: DB.id(), viajeId, quien, monto, fecha, concepto: 'extra-'+concepto });
-    DB.set('aportaciones', aps);
+    aps.push(nuevaAp);
+    localStorage.setItem('aportaciones', JSON.stringify(aps));
+    // Guardar aportación directamente en Firebase
+    if (window.db) {
+      db.collection('aportaciones').doc(nuevaAp.id).set(nuevaAp)
+        .catch(e => console.warn('Error guardando aportación extra:', e));
+    }
   }
   closeSheet();
   setTimeout(() => editViaje(viajeId), 150);
