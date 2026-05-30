@@ -1328,6 +1328,9 @@ window.abrirAbono = function(viajeId, montoSugerido) {
   const sugerido = montoSugerido || deuda;
   const anticipo = Number(viaje ? viaje.anticipo||0 : 0);
 
+  // Guardar en variables globales para evitar problemas de escapado en HTML
+  window._cobroActual = { viajeId, aports, yaU, yaK };
+
   openSheet('Registrar pago', `
     <div class="alert alert-blue" style="margin-bottom:12px">
       <strong>${cliente ? cliente.nombre : 'Cliente'}</strong><br>
@@ -1343,7 +1346,7 @@ window.abrirAbono = function(viajeId, montoSugerido) {
       <button class="btn btn-ghost btn-sm" onclick="setMonto(${Math.round(deuda/2)})" style="flex:1">Mitad ${fmt(deuda/2)}</button>
     </div>
     <div class="form-group"><label class="form-label">MONTO DEL PAGO ($)</label>
-      <input class="form-input" type="number" id="c-monto" value="${Math.round(sugerido)}" oninput="prevCobro(this,${JSON.stringify(aports)},${yaU},${yaK})">
+      <input class="form-input" type="number" id="c-monto" value="${Math.round(sugerido)}" oninput="prevCobroActual(this)">
     </div>
     <div class="form-group"><label class="form-label">FECHA DE PAGO</label>
       <input class="form-input" type="date" id="c-fecha" value="${today()}">
@@ -1361,11 +1364,23 @@ window.abrirAbono = function(viajeId, montoSugerido) {
     <div class="section-title" style="margin-bottom:10px">Distribución automática</div>
     <div id="cobro-prev"></div>
     <div style="height:14px"></div>
-    <button class="btn btn-primary" onclick="saveCobro('${viajeId}',${JSON.stringify(aports)},${yaU},${yaK})">Confirmar pago</button>
+    <button class="btn btn-primary" onclick="saveCobroActual()">Confirmar pago</button>
   `, () => {
     const el = $('c-monto');
-    if (el) prevCobro(el, aports, yaU, yaK);
+    if (el) prevCobroActual(el);
   });
+};
+
+window.prevCobroActual = function(input) {
+  if (!window._cobroActual) return;
+  const { aports, yaU, yaK } = window._cobroActual;
+  prevCobro(input, aports, yaU, yaK);
+};
+
+window.saveCobroActual = function() {
+  if (!window._cobroActual) return;
+  const { viajeId, aports, yaU, yaK } = window._cobroActual;
+  saveCobro(viajeId, aports, yaU, yaK);
 };
 
 window.setMonto = function(monto) {
