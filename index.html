@@ -1042,7 +1042,6 @@ window.calcTotalGastos = function() {
   const combustible = parseFloat(document.getElementById('f-combustible')?.value)||0;
   const otros = parseFloat(document.getElementById('f-otros')?.value)||0;
   const viatico = parseFloat(document.getElementById('f-viatico')?.value)||0;
-  const anticipo = parseFloat(document.getElementById('f-anticipo')?.value)||0;
   const totalGastos = casetas + combustible + otros + viatico;
 
   // Sumar lo financiado por socios
@@ -1051,18 +1050,15 @@ window.calcTotalGastos = function() {
     financiado += parseFloat(el.value)||0;
   });
 
-  const diferencia = (anticipo + financiado) - totalGastos;
-
+  const diferencia = financiado - totalGastos;
   const fmt2 = n => '$' + Math.abs(n).toLocaleString('es-MX', {minimumFractionDigits:0, maximumFractionDigits:0});
 
   const totGastos = document.getElementById('tot-gastos');
-  const totAnticipo = document.getElementById('tot-anticipo');
   const totFinanciado = document.getElementById('tot-financiado');
   const totDif = document.getElementById('tot-diferencia');
   const totMsg = document.getElementById('tot-msg');
 
   if (totGastos) totGastos.textContent = fmt2(totalGastos);
-  if (totAnticipo) totAnticipo.textContent = '-'+fmt2(anticipo);
   if (totFinanciado) totFinanciado.textContent = fmt2(financiado);
   if (totDif) {
     totDif.textContent = (diferencia >= 0 ? '+' : '-') + fmt2(diferencia);
@@ -1074,10 +1070,10 @@ window.calcTotalGastos = function() {
       totMsg.textContent = '✓ El financiamiento cubre exactamente los gastos';
     } else if (diferencia > 0) {
       totMsg.style.display = 'block'; totMsg.style.color = 'var(--amber)';
-      totMsg.textContent = 'Faltan '+fmt2(diferencia)+' por financiar';
+      totMsg.textContent = 'Exceso de '+fmt2(diferencia)+' sobre los gastos';
     } else {
       totMsg.style.display = 'block'; totMsg.style.color = 'var(--red)';
-      totMsg.textContent = 'Exceso de '+fmt2(diferencia)+' — revisa los montos';
+      totMsg.textContent = 'Faltan '+fmt2(Math.abs(diferencia))+' por financiar';
     }
   }
 };
@@ -1160,10 +1156,6 @@ function formViaje(editId) {
       <div class="card-row" style="margin-bottom:6px">
         <span class="card-label">Total gastos del viaje</span>
         <span id="tot-gastos" style="font-family:var(--mono);font-weight:600">$0</span>
-      </div>
-      <div class="card-row" style="margin-bottom:6px">
-        <span class="card-label">Anticipo cliente</span>
-        <span id="tot-anticipo" style="font-family:var(--mono);color:var(--green)">-$0</span>
       </div>
       <div class="card-row" style="margin-bottom:6px">
         <span class="card-label">Financiado por socios</span>
