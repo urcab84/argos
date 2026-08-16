@@ -1037,12 +1037,61 @@ function aportRow(i, a) {
   return '<div class="apor-row" id="arow-'+i+'"><select class="form-select" id="aq-'+i+'" style="flex:0 0 130px"><option value="caja"'+(a.quien==='caja'?' selected':'')+'>Caja común</option><option value="uriel"'+(a.quien==='uriel'?' selected':'')+'>Uriel</option><option value="kike"'+(a.quien==='kike'?' selected':'')+'>Kike</option></select><input class="form-input" type="number" id="am-'+i+'" placeholder="Monto $" value="'+(a.monto||'')+'"><button style="background:var(--red-light);border:none;color:var(--red);width:32px;height:32px;border-radius:8px;font-size:16px;cursor:pointer;flex-shrink:0" onclick="document.getElementById(\'arow-'+i+'\').remove()">×</button></div>';
 }
 
+window.calcTotalGastos = function() {
+  const casetas = parseFloat(document.getElementById('f-casetas')?.value)||0;
+  const combustible = parseFloat(document.getElementById('f-combustible')?.value)||0;
+  const otros = parseFloat(document.getElementById('f-otros')?.value)||0;
+  const viatico = parseFloat(document.getElementById('f-viatico')?.value)||0;
+  const anticipo = parseFloat(document.getElementById('f-anticipo')?.value)||0;
+  const totalGastos = casetas + combustible + otros + viatico;
+
+  // Sumar lo financiado por socios
+  let financiado = 0;
+  document.querySelectorAll('[id^="am-"]').forEach(el => {
+    financiado += parseFloat(el.value)||0;
+  });
+
+  const diferencia = (anticipo + financiado) - totalGastos;
+
+  const fmt2 = n => '$' + Math.abs(n).toLocaleString('es-MX', {minimumFractionDigits:0, maximumFractionDigits:0});
+
+  const totGastos = document.getElementById('tot-gastos');
+  const totAnticipo = document.getElementById('tot-anticipo');
+  const totFinanciado = document.getElementById('tot-financiado');
+  const totDif = document.getElementById('tot-diferencia');
+  const totMsg = document.getElementById('tot-msg');
+
+  if (totGastos) totGastos.textContent = fmt2(totalGastos);
+  if (totAnticipo) totAnticipo.textContent = '-'+fmt2(anticipo);
+  if (totFinanciado) totFinanciado.textContent = fmt2(financiado);
+  if (totDif) {
+    totDif.textContent = (diferencia >= 0 ? '+' : '-') + fmt2(diferencia);
+    totDif.style.color = diferencia === 0 ? 'var(--green)' : diferencia > 0 ? 'var(--amber)' : 'var(--red)';
+  }
+  if (totMsg) {
+    if (diferencia === 0) {
+      totMsg.style.display = 'block'; totMsg.style.color = 'var(--green)';
+      totMsg.textContent = '✓ El financiamiento cubre exactamente los gastos';
+    } else if (diferencia > 0) {
+      totMsg.style.display = 'block'; totMsg.style.color = 'var(--amber)';
+      totMsg.textContent = 'Faltan '+fmt2(diferencia)+' por financiar';
+    } else {
+      totMsg.style.display = 'block'; totMsg.style.color = 'var(--red)';
+      totMsg.textContent = 'Exceso de '+fmt2(diferencia)+' — revisa los montos';
+    }
+  }
+};
+
 window.addAportRow = function() {
   _arowCount++;
   const c = document.getElementById('aports-container');
   const d = document.createElement('div');
   d.innerHTML = aportRow(_arowCount, { quien:'caja', monto:'' });
   c.appendChild(d.firstElementChild);
+  // Agregar listener al nuevo campo de monto
+  const nuevoMonto = document.getElementById('am-'+_arowCount);
+  if (nuevoMonto) nuevoMonto.addEventListener('input', calcTotalGastos);
+  calcTotalGastos();
 };
 
 function formViaje(editId) {
@@ -1098,31 +1147,67 @@ function formViaje(editId) {
       <div class="form-group"><label class="form-label">CASETAS ($)</label><input class="form-input" type="number" id="f-casetas" placeholder="0" value="${v.casetas||''}"></div>
       <div class="form-group"><label class="form-label">COMBUSTIBLE ($)</label><input class="form-input" type="number" id="f-combustible" placeholder="0" value="${v.combustible||''}"></div>
     </div>
-    <div class="form-group"><label class="form-label">OTROS GASTOS ($)</label><input class="form-input" type="number" id="f-otros" placeholder="0" value="${v.otrosGastos||''}"></div>
+    <div class="form-group"><label class="form-label">OTROS GASTOS ($)</label><input class="form-input" type="number" id="f-otros" placeholder="0" value="${v.otrosGastos||''}" oninput="calcTotalGastos()"></div>
     <div class="form-group"><label class="form-label">ANTICIPO RECIBIDO ($)</label>
-      <input class="form-input" type="number" id="f-anticipo" placeholder="0" value="${v.anticipo||''}">
+      <input class="form-input" type="number" id="f-anticipo" placeholder="0" value="${v.anticipo||''}" oninput="calcTotalGastos()">
     </div>
     <div class="divider"></div>
     <div class="section-title" style="margin-bottom:6px">Financiamiento del viaje</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px">¿Quién puso el dinero para los gastos del viaje?</div>
+
+    <!-- Totalizador de gastos -->
+    <div id="totalizador-gastos" style="background:var(--bg3);border:1.5px solid var(--border);border-radius:var(--r-sm);padding:12px;margin-bottom:14px">
+      <div class="card-row" style="margin-bottom:6px">
+        <span class="card-label">Total gastos del viaje</span>
+        <span id="tot-gastos" style="font-family:var(--mono);font-weight:600">$0</span>
+      </div>
+      <div class="card-row" style="margin-bottom:6px">
+        <span class="card-label">Anticipo cliente</span>
+        <span id="tot-anticipo" style="font-family:var(--mono);color:var(--green)">-$0</span>
+      </div>
+      <div class="card-row" style="margin-bottom:6px">
+        <span class="card-label">Financiado por socios</span>
+        <span id="tot-financiado" style="font-family:var(--mono);color:var(--blue)">$0</span>
+      </div>
+      <div style="height:1px;background:var(--border);margin:6px 0"></div>
+      <div class="card-row">
+        <span style="font-weight:600">Diferencia</span>
+        <span id="tot-diferencia" style="font-family:var(--mono);font-weight:700;color:var(--green)">$0</span>
+      </div>
+      <div id="tot-msg" style="font-size:11px;margin-top:6px;display:none"></div>
+    </div>
+
     <div id="aports-container">${(aportsIniciales.length ? aportsIniciales : [{quien:'caja',monto:''}]).map((a,i) => aportRow(i,a)).join('')}</div>
     <button class="btn btn-ghost btn-sm" style="margin-bottom:16px" onclick="addAportRow()">+ Agregar fuente</button>
     <button class="btn btn-primary" onclick="saveViaje('${editId||''}')">Guardar viaje</button>
   `);
+  // Inicializar totalizador después de abrir
+  setTimeout(() => {
+    // Agregar listeners a campos de gastos
+    ['f-casetas','f-combustible','f-otros','f-anticipo'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', calcTotalGastos);
+    });
+    // Listener en aports-container para detectar cambios en montos
+    const observer = new MutationObserver(calcTotalGastos);
+    const cont = document.getElementById('aports-container');
+    if (cont) observer.observe(cont, { childList: true, subtree: true });
+    calcTotalGastos();
+  }, 200);
   };
 
-  // Si editando y no hay aportaciones en local, intentar traer de Firebase
-  if (editId && aportsExistentes.length === 0 && window.db) {
+  // Siempre cargar de Firebase cuando editamos para tener datos frescos
+  if (editId && window.db) {
     db.collection('aportaciones').where('viajeId', '==', editId).get().then(snap => {
       const fromFB = snap.docs.map(d => d.data()).filter(a => a.quien !== 'cliente');
       // Actualizar localStorage con lo de Firebase
-      if (fromFB.length > 0) {
-        let aps = DB.get('aportaciones').filter(a => a.viajeId !== editId);
-        aps = aps.concat(fromFB);
-        localStorage.setItem('aportaciones', JSON.stringify(aps));
-      }
-      mostrarForm(fromFB.length > 0 ? fromFB : []);
-    }).catch(() => mostrarForm([]));
+      let aps = DB.get('aportaciones').filter(a => a.viajeId !== editId);
+      aps = aps.concat(fromFB);
+      localStorage.setItem('aportaciones', JSON.stringify(aps));
+      // Mostrar formulario con aportaciones de Firebase (o las locales si no hay en FB)
+      const aportsFinal = fromFB.length > 0 ? fromFB : aportsExistentes;
+      mostrarForm(aportsFinal);
+    }).catch(() => mostrarForm(aportsExistentes));
   } else {
     mostrarForm(aportsExistentes);
   }
@@ -1182,12 +1267,19 @@ window.saveViaje = function(editId) {
     localStorage.setItem('aportaciones', JSON.stringify(aps));
     // Guardar en Firebase directamente cada aportación nueva
     if (window.db) {
+      console.log('Guardando en Firebase', nuevasAps.length, 'aportaciones para viaje', editId);
       db.collection('aportaciones').where('viajeId', '==', editId).get().then(snap => {
+        console.log('Aportaciones antiguas encontradas:', snap.docs.length);
         const batch = db.batch();
         snap.docs.forEach(d => batch.delete(d.ref));
-        nuevasAps.forEach(a => batch.set(db.collection('aportaciones').doc(a.id), a));
+        nuevasAps.forEach(a => {
+          console.log('Guardando aportación:', a);
+          batch.set(db.collection('aportaciones').doc(a.id), a);
+        });
         return batch.commit();
-      }).catch(e => console.warn('Error guardando aportaciones:', e));
+      }).then(() => {
+        console.log('Batch commit exitoso');
+      }).catch(e => console.error('Error guardando aportaciones:', e));
     }
   } else {
     viajes.push(data);
@@ -1499,10 +1591,45 @@ function htmlNomina() {
   const nominas = DB.get('nominas').slice().reverse();
   const operadores = DB.get('operadores');
   const semanas = [...new Set(nominas.map(n => n.semanaIni+'/'+n.semanaFin))];
+
+  // Calcular últimas 4 semanas anteriores
+  const semanasAnteriores = [];
+  const { ini: semActIni } = semanaActual();
+  for (let i = 1; i <= 4; i++) {
+    const d = new Date(semActIni);
+    d.setDate(d.getDate() - (i * 7));
+    const sIni = new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay());
+    const sFin = new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay() + 6);
+    const iso = dt => dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+    // Solo mostrar si algún operador tiene viajes esa semana
+    const tieneViajes = operadores.some(op => sueldoAcumulado(op.id, iso(sIni), iso(sFin)).bruto > 0);
+    if (tieneViajes) semanasAnteriores.push({ ini: iso(sIni), fin: iso(sFin) });
+  }
+
   return `<div class="section" style="padding-top:14px">
     <div class="section-title">Semana actual</div>
     ${renderNominaDash()}
-    ${semanas.length ? '<div class="section-title" style="margin-top:20px">Historial</div>'+semanas.map(sk => {
+
+    ${semanasAnteriores.length ? `
+    <div class="section-title" style="margin-top:20px">Semanas anteriores pendientes</div>
+    ${semanasAnteriores.map(({ ini: sIni, fin: sFin }) => {
+      const filas = operadores.map(op => {
+        const r = sueldoAcumulado(op.id, sIni, sFin);
+        return r.bruto > 0 ? { op, ...r } : null;
+      }).filter(Boolean);
+      if (!filas.length) return '';
+      return '<div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin:12px 0 6px">'+fmtDate(sIni)+' — '+fmtDate(sFin)+'</div>'+
+      filas.map(f => '<div class="card" style="border-color:'+(f.pendiente>0?'#fcd34d':'#86efac')+'">'+
+        '<div class="card-row"><span style="font-weight:600">'+f.op.nombre+'</span>'+
+        '<span class="card-val" style="color:'+(f.pendiente>0?'var(--amber)':'var(--green)')+'">'+
+        (f.pendiente>0?fmt(f.pendiente)+' pendiente':'✓ Pagado')+'</span></div>'+
+        '<div class="card-row"><span class="card-label">'+f.viajes.length+' viaje'+(f.viajes.length!==1?'s':'')+' · acumulado '+fmt(f.bruto)+'</span>'+
+        (f.pagado>0?'<span class="badge badge-green">pagado '+fmt(f.pagado)+'</span>':'')+'</div>'+
+        (f.pendiente>0?'<button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%;border-color:var(--amber);color:var(--amber)" onclick="pagarNominaDash(\''+f.op.id+'\',\''+sIni+'\',\''+sFin+'\','+f.pendiente+')">Registrar pago — '+fmt(f.pendiente)+'</button>':'')+'</div>'
+      ).join('');
+    }).join('')}` : ''}
+
+    ${semanas.length ? '<div class="section-title" style="margin-top:20px">Historial de pagos</div>'+semanas.map(sk => {
       const [sIni, sFin] = sk.split('/');
       return '<div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin:12px 0 6px">'+fmtDate(sIni)+' — '+fmtDate(sFin)+'</div>'+nominas.filter(n=>n.semanaIni===sIni&&n.semanaFin===sFin).map(n => {
         const op = operadores.find(o => o.id === n.operadorId);
