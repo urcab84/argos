@@ -1265,21 +1265,17 @@ window.saveViaje = function(editId) {
     const nuevasAps = aports.map(a => ({ id: DB.id(), viajeId: editId, fecha, ...a }));
     nuevasAps.forEach(a => aps.push(a));
     localStorage.setItem('aportaciones', JSON.stringify(aps));
-    // Guardar en Firebase directamente cada aportación nueva
+    // Guardar aportaciones directamente en Firebase SIN usar where query
     if (window.db) {
-      console.log('Guardando en Firebase', nuevasAps.length, 'aportaciones para viaje', editId);
-      db.collection('aportaciones').where('viajeId', '==', editId).get().then(snap => {
-        console.log('Aportaciones antiguas encontradas:', snap.docs.length);
-        const batch = db.batch();
-        snap.docs.forEach(d => batch.delete(d.ref));
-        nuevasAps.forEach(a => {
-          console.log('Guardando aportación:', a);
-          batch.set(db.collection('aportaciones').doc(a.id), a);
-        });
-        return batch.commit();
-      }).then(() => {
-        console.log('Batch commit exitoso');
-      }).catch(e => console.error('Error guardando aportaciones:', e));
+      console.log('Guardando', nuevasAps.length, 'aportaciones directamente en Firebase');
+      // Guardar cada nueva aportación directamente por su ID
+      const promesas = nuevasAps.map(a => {
+        console.log('Guardando aportación:', a.id, 'viajeId:', a.viajeId, 'quien:', a.quien, 'monto:', a.monto);
+        return db.collection('aportaciones').doc(a.id).set(a);
+      });
+      Promise.all(promesas).then(() => {
+        console.log('Todas las aportaciones guardadas en Firebase');
+      }).catch(e => console.error('Error guardando aportación:', e));
     }
   } else {
     viajes.push(data);
@@ -1295,9 +1291,13 @@ window.saveViaje = function(editId) {
     localStorage.setItem('aportaciones', JSON.stringify(aps));
     // Guardar aportaciones directamente en Firebase
     if (window.db) {
-      const batch = db.batch();
-      nuevasAps.forEach(a => batch.set(db.collection('aportaciones').doc(a.id), a));
-      batch.commit().catch(e => console.warn('Error guardando aportaciones:', e));
+      const promesas = nuevasAps.map(a => {
+        console.log('Guardando aportación nueva:', a.id, 'viajeId:', a.viajeId, 'quien:', a.quien, 'monto:', a.monto);
+        return db.collection('aportaciones').doc(a.id).set(a);
+      });
+      Promise.all(promesas).then(() => {
+        console.log('Aportaciones de viaje nuevo guardadas');
+      }).catch(e => console.error('Error guardando aportación:', e));
     }
   }
   closeSheet(); render();
