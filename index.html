@@ -387,7 +387,11 @@ const DB = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)) || []; } catch { return []; } },
   set(k, v) {
     localStorage.setItem(k, JSON.stringify(v));
-    if (window._guardarEnFirestore) window._guardarEnFirestore(k, v);
+    // Solo sincronizar colecciones que no se guardan directamente documento por documento
+    const directas = ['viajes', 'aportaciones', 'cobros'];
+    if (!directas.includes(k) && window._guardarEnFirestore) {
+      window._guardarEnFirestore(k, v);
+    }
   },
   id() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 };
@@ -1185,12 +1189,17 @@ window.saveViaje = function(editId) {
     }
   } else {
     viajes.push(data);
-    DB.set('viajes', viajes);
+    localStorage.setItem('viajes', JSON.stringify(viajes));
+    // Guardar viaje directamente en Firebase
+    if (window.db) {
+      db.collection('viajes').doc(id).set(data)
+        .catch(e => console.warn('Error guardando viaje:', e));
+    }
     let aps = DB.get('aportaciones');
     const nuevasAps = aports.map(a => ({ id: DB.id(), viajeId: id, fecha, ...a }));
     nuevasAps.forEach(a => aps.push(a));
     localStorage.setItem('aportaciones', JSON.stringify(aps));
-    // Guardar en Firebase directamente
+    // Guardar aportaciones directamente en Firebase
     if (window.db) {
       const batch = db.batch();
       nuevasAps.forEach(a => batch.set(db.collection('aportaciones').doc(a.id), a));
@@ -1437,9 +1446,15 @@ window.saveCobro = function(viajeId, aports, yaU, yaK) {
     rK = pagar * (pendK/totalP);
     rest -= (rU + rK);
   }
+  const nuevoCobro = { id: DB.id(), viajeId, fecha, monto, forma, notas, recuperaUriel: rU, recuperaKike: rK, utilidad: rest };
   const cobros = DB.get('cobros');
-  cobros.push({ id: DB.id(), viajeId, fecha, monto, forma, notas, recuperaUriel: rU, recuperaKike: rK, utilidad: rest });
-  DB.set('cobros', cobros);
+  cobros.push(nuevoCobro);
+  localStorage.setItem('cobros', JSON.stringify(cobros));
+  // Guardar directamente en Firebase
+  if (window.db) {
+    db.collection('cobros').doc(nuevoCobro.id).set(nuevoCobro)
+      .catch(e => console.warn('Error guardando cobro:', e));
+  }
   closeSheet(); render();
 };
 
