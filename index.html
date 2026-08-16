@@ -1157,8 +1157,10 @@ window.saveViaje = function(editId) {
     const i = sel.id.split('-')[1];
     const mEl = document.getElementById('am-'+i);
     const monto = mEl ? (parseFloat(mEl.value)||0) : 0;
+    console.log('Aportación encontrada:', sel.value, monto, 'campo:', sel.id);
     if (monto > 0) aports.push({ quien: sel.value, monto });
   });
+  console.log('Total aportaciones a guardar:', aports.length, aports);
 
   const viajes = DB.get('viajes');
   const id = editId || DB.id();
