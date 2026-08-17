@@ -1774,23 +1774,23 @@ window.formGasto = function() {
         <option>Mantenimiento</option><option>Descompostura</option><option>Otro</option>
       </select>
     </div>
-    <div class="form-group"><label class="form-label">UNIDAD (vacío = gasto general)</label>
+    <div class="form-group"><label class="form-label">UNIDAD</label>
       <select class="form-select" id="g-unidad">
-        <option value="">General (÷ todas las unidades)</option>
-        ${unidades.map(u => '<option value="'+u.id+'">'+u.nombre+(u.placas?' · '+u.placas:'')+'</option>').join('')}
+        <option value="">General</option>
+        ${unidades.map(u => '<option value="'+u.id+'">'+u.nombre+'</option>').join('')}
       </select>
     </div>
-    <div class="form-group"><label class="form-label">DESCRIPCIÓN</label><input class="form-input" type="text" id="g-desc" placeholder="ej. Alternador, renta patio..."></div>
+    <div class="form-group"><label class="form-label">DESCRIPCION</label><input class="form-input" type="text" id="g-desc" placeholder="ej. Alternador, renta patio..."></div>
     <div class="form-group"><label class="form-label">MONTO ($)</label><input class="form-input" type="number" id="g-monto" placeholder="0"></div>
     <div class="form-group"><label class="form-label">PAGADO POR</label>
       <select class="form-select" id="g-quien">
-        <option value="caja">Caja común</option>
+        <option value="caja">Caja comun</option>
         <option value="uriel">Uriel (saldo a favor)</option>
         <option value="kike">Kike (saldo a favor)</option>
       </select>
     </div>
     <button class="btn btn-primary" onclick="saveGasto()">Guardar gasto</button>
-  \`);
+  `);
 };
 window.delGastoNIP = function(id) {
   pedirNIP(async () => {
