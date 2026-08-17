@@ -1147,9 +1147,10 @@ function formViaje(editId) {
       </select>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">% AL CHOFER</label><input class="form-input" type="number" id="f-pct" placeholder="0" value="${defPct}"></div>
-      <div class="form-group"><label class="form-label">VIÁTICO ($)</label><input class="form-input" type="number" id="f-viatico" placeholder="0" value="${v.viatico||''}"></div>
+      <div class="form-group"><label class="form-label">% AL CHOFER</label><input class="form-input" type="number" id="f-pct" placeholder="0" value="${defPct}" oninput="calcMontoChofer()"></div>
+      <div class="form-group"><label class="form-label">MONTO CHOFER ($)</label><input class="form-input" type="number" id="f-monto-chofer" placeholder="calculado" oninput="calcPctChofer()"></div>
     </div>
+    <div class="form-group"><label class="form-label">VIÁTICO ($)</label><input class="form-input" type="number" id="f-viatico" placeholder="0" value="${v.viatico||''}"></div>
     <div class="form-group"><label class="form-label">CLIENTE</label>
       <select class="form-select" id="f-cliente">
         <option value="">Seleccionar...</option>
@@ -1157,7 +1158,7 @@ function formViaje(editId) {
       </select>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">FLETE ($)</label><input class="form-input" type="number" id="f-flete" placeholder="0" value="${v.flete||''}"></div>
+      <div class="form-group"><label class="form-label">FLETE ($)</label><input class="form-input" type="number" id="f-flete" placeholder="0" value="${v.flete||''}" oninput="calcMontoChofer()"></div>
       <div class="form-group"><label class="form-label">VENCE</label><input class="form-input" type="date" id="f-vence" value="${v.fechaVence||''}"></div>
     </div>
     <div class="form-row">
@@ -1194,18 +1195,17 @@ function formViaje(editId) {
     <button class="btn btn-ghost btn-sm" style="margin-bottom:16px" onclick="addAportRow()">+ Agregar fuente</button>
     <button class="btn btn-primary" onclick="saveViaje('${editId||''}')">Guardar viaje</button>
   `);
-  // Inicializar totalizador después de abrir
+  // Inicializar monto chofer después de abrir
   setTimeout(() => {
-    // Agregar listeners a campos de gastos
+    calcMontoChofer();
+    calcTotalGastos();
     ['f-casetas','f-combustible','f-otros','f-anticipo'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', calcTotalGastos);
     });
-    // Listener en aports-container para detectar cambios en montos
     const observer = new MutationObserver(calcTotalGastos);
     const cont = document.getElementById('aports-container');
     if (cont) observer.observe(cont, { childList: true, subtree: true });
-    calcTotalGastos();
   }, 200);
   };
 
@@ -1229,7 +1229,27 @@ function formViaje(editId) {
 window.precargarPct = function(sel) {
   const pct = sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex].dataset.pct;
   const campo = $('f-pct');
-  if (campo && !campo.value && pct) campo.value = pct;
+  if (campo && !campo.value && pct) { campo.value = pct; calcMontoChofer(); }
+};
+
+// Calcula el monto cuando se cambia el %
+window.calcMontoChofer = function() {
+  const flete = parseFloat($('f-flete') ? $('f-flete').value : 0) || 0;
+  const pct = parseFloat($('f-pct') ? $('f-pct').value : 0) || 0;
+  const montoEl = $('f-monto-chofer');
+  if (montoEl && flete > 0 && pct > 0) {
+    montoEl.value = Math.round(flete * pct / 100);
+  }
+};
+
+// Calcula el % cuando se ingresa el monto manualmente
+window.calcPctChofer = function() {
+  const flete = parseFloat($('f-flete') ? $('f-flete').value : 0) || 0;
+  const monto = parseFloat($('f-monto-chofer') ? $('f-monto-chofer').value : 0) || 0;
+  const pctEl = $('f-pct');
+  if (pctEl && flete > 0 && monto > 0) {
+    pctEl.value = Math.round((monto / flete) * 100 * 100) / 100; // 2 decimales
+  }
 };
 
 window.saveViaje = function(editId) {
