@@ -713,13 +713,27 @@ window.saveNominaRapida = function(operadorId, semIni, semFin) {
   const forma = $('np-forma') ? $('np-forma').value : 'efectivo';
   const notas = $('np-notas') ? $('np-notas').value : '';
   if (!total) { alert('Ingresa el monto'); return; }
+  
+  const nuevaNomina = { id: DB.id(), operadorId, semanaIni: semIni, semanaFin: semFin, total, quien, forma, notas };
   const nominas = DB.get('nominas');
-  nominas.push({ id: DB.id(), operadorId, semanaIni: semIni, semanaFin: semFin, total, quien, forma, notas });
-  DB.set('nominas', nominas);
+  nominas.push(nuevaNomina);
+  localStorage.setItem('nominas', JSON.stringify(nominas));
+  // Guardar nómina directamente en Firebase
+  if (window.db) {
+    db.collection('nominas').doc(nuevaNomina.id).set(nuevaNomina)
+      .catch(e => console.warn('Error guardando nómina:', e));
+  }
+
   if (quien === 'uriel' || quien === 'kike') {
+    const nuevaAp = { id: DB.id(), viajeId: null, quien, monto: total, fecha: semFin, concepto: 'nomina' };
     const aps = DB.get('aportaciones');
-    aps.push({ id: DB.id(), viajeId: null, quien, monto: total, fecha: semFin, concepto: 'nomina' });
-    DB.set('aportaciones', aps);
+    aps.push(nuevaAp);
+    localStorage.setItem('aportaciones', JSON.stringify(aps));
+    // Guardar aportación directamente en Firebase
+    if (window.db) {
+      db.collection('aportaciones').doc(nuevaAp.id).set(nuevaAp)
+        .catch(e => console.warn('Error guardando aportación nómina:', e));
+    }
   }
   closeSheet(); render();
 };
@@ -1689,14 +1703,27 @@ window.saveGasto = function() {
   const quien = $('g-quien') ? $('g-quien').value : 'caja';
   const unidadId = ($('g-unidad') ? $('g-unidad').value : '') || null;
   if (!monto) { alert('Ingresa el monto'); return; }
+
+  const nuevoGasto = { id: DB.id(), fecha, concepto, descripcion, monto, quien, unidadId };
   const gastos = DB.get('gastos');
-  gastos.push({ id: DB.id(), fecha, concepto, descripcion, monto, quien, unidadId });
-  DB.set('gastos', gastos);
+  gastos.push(nuevoGasto);
+  localStorage.setItem('gastos', JSON.stringify(gastos));
+  // Guardar directamente en Firebase
+  if (window.db) {
+    db.collection('gastos').doc(nuevoGasto.id).set(nuevoGasto)
+      .catch(e => console.warn('Error guardando gasto:', e));
+  }
+
   if (quien === 'uriel' || quien === 'kike') {
-    const nuevoGastoId = gastos[gastos.length-1].id;
+    const nuevaAp = { id: DB.id(), viajeId: null, quien, monto, fecha, concepto: 'gasto-'+concepto, gastoId: nuevoGasto.id };
     const aps = DB.get('aportaciones');
-    aps.push({ id: DB.id(), viajeId: null, quien, monto, fecha, concepto: 'gasto-'+concepto, gastoId: nuevoGastoId });
-    DB.set('aportaciones', aps);
+    aps.push(nuevaAp);
+    localStorage.setItem('aportaciones', JSON.stringify(aps));
+    // Guardar directamente en Firebase
+    if (window.db) {
+      db.collection('aportaciones').doc(nuevaAp.id).set(nuevaAp)
+        .catch(e => console.warn('Error guardando aportación gasto:', e));
+    }
   }
   closeSheet(); render();
 };
