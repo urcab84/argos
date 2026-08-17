@@ -1174,22 +1174,34 @@ window.borrarGastoExtra = function(viajeId, gIdx) {
 };
 
 window.delViajeNIP = function(id) {
-  pedirNIP(() => {
+  pedirNIP(async () => {
+    // Obtener cobros y aportaciones del viaje ANTES de borrar del localStorage
+    const cobrosDelViaje = DB.get('cobros').filter(c => c.viajeId === id);
+    const aportsDelViaje = DB.get('aportaciones').filter(a => a.viajeId === id);
+
     // Borrar en localStorage
-    DB.set('viajes', DB.get('viajes').filter(v => v.id !== id));
-    DB.set('cobros', DB.get('cobros').filter(c => c.viajeId !== id));
-    DB.set('aportaciones', DB.get('aportaciones').filter(a => a.viajeId !== id));
-    // Borrar en Firebase
+    localStorage.setItem('viajes', JSON.stringify(DB.get('viajes').filter(v => v.id !== id)));
+    localStorage.setItem('cobros', JSON.stringify(DB.get('cobros').filter(c => c.viajeId !== id)));
+    localStorage.setItem('aportaciones', JSON.stringify(DB.get('aportaciones').filter(a => a.viajeId !== id)));
+
+    // Borrar en Firebase directamente por ID
     if (typeof firebase !== 'undefined') {
       const db2 = firebase.firestore();
-      db2.collection('viajes').doc(id).delete().catch(e => console.warn(e));
-      // Borrar cobros y aportaciones del viaje en Firebase
-      db2.collection('cobros').where('viajeId','==',id).get().then(snap => {
-        snap.docs.forEach(d => d.ref.delete());
-      }).catch(e => console.warn(e));
-      db2.collection('aportaciones').where('viajeId','==',id).get().then(snap => {
-        snap.docs.forEach(d => d.ref.delete());
-      }).catch(e => console.warn(e));
+      try {
+        await db2.collection('viajes').doc(id).delete();
+        console.log('Viaje borrado de Firebase:', id);
+        // Borrar cobros por ID
+        for (const c of cobrosDelViaje) {
+          await db2.collection('cobros').doc(c.id).delete();
+        }
+        // Borrar aportaciones por ID
+        for (const a of aportsDelViaje) {
+          await db2.collection('aportaciones').doc(a.id).delete();
+        }
+        console.log('Borrado completo del viaje:', id);
+      } catch(e) {
+        console.error('Error borrando viaje de Firebase:', e);
+      }
     }
     closeSheet(); render();
   });
@@ -1814,20 +1826,21 @@ window.calcTotalGastoForm = function() {
   }
 };
 window.delGastoNIP = function(id) {
-  pedirNIP(() => {
-    const gastos = DB.get('gastos');
-    DB.set('gastos', gastos.filter(g => g.id !== id));
-    const aps = DB.get('aportaciones');
-    const aBorrar = aps.filter(a => a.gastoId === id);
-    DB.set('aportaciones', aps.filter(a => a.gastoId !== id));
+  pedirNIP(async () => {
+    const aBorrar = DB.get('aportaciones').filter(a => a.gastoId === id);
+    localStorage.setItem('gastos', JSON.stringify(DB.get('gastos').filter(g => g.id !== id)));
+    localStorage.setItem('aportaciones', JSON.stringify(DB.get('aportaciones').filter(a => a.gastoId !== id)));
     if (typeof firebase !== 'undefined') {
       const db2 = firebase.firestore();
-      // Borrar gasto en Firebase
-      db2.collection('gastos').doc(id).delete().catch(e => console.warn(e));
-      // Borrar aportaciones asociadas
-      aBorrar.forEach(a => {
-        db2.collection('aportaciones').doc(a.id).delete().catch(e => console.warn(e));
-      });
+      try {
+        await db2.collection('gastos').doc(id).delete();
+        console.log('Gasto borrado de Firebase:', id);
+        for (const a of aBorrar) {
+          await db2.collection('aportaciones').doc(a.id).delete();
+        }
+      } catch(e) {
+        console.error('Error borrando gasto:', e);
+      }
     }
     render();
   });
@@ -1866,10 +1879,11 @@ window.saveGasto = function(editId) {
     // Firebase
     window._guardarDoc && window._guardarDoc('gastos', nuevoGasto);
     if (typeof firebase !== 'undefined') {
-      firebase.firestore().collection('aportaciones').where('gastoId','==',editId).get().then(snap => {
-        snap.docs.forEach(d => d.ref.delete());
-        nuevasAps.forEach(a => window._guardarDoc && window._guardarDoc('aportaciones', a));
-      }).catch(() => nuevasAps.forEach(a => window._guardarDoc && window._guardarDoc('aportaciones', a)));
+      // Borrar aportaciones antiguas por ID (sin usar where)
+      const apsAntiguasIds = DB.get('aportaciones').filter(a => a.gastoId === editId).map(a => a.id);
+      const db2 = firebase.firestore();
+      apsAntiguasIds.forEach(aid => db2.collection('aportaciones').doc(aid).delete().catch(e => console.warn(e)));
+      nuevasAps.forEach(a => window._guardarDoc && window._guardarDoc('aportaciones', a));
     }
   } else {
     // Nuevo gasto
