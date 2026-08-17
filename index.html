@@ -1721,14 +1721,19 @@ function renderGastos() {
     <button class="tab-btn active" onclick="showGTab('mensuales',this)">Mensuales</button>
     <button class="tab-btn" onclick="showGTab('nomina',this)">Nómina</button>
   </div>
-  <div id="gastos-content">${htmlGastosMensuales()}</div>`;
+  <div id="gastos-content"></div>`;
+  // Cargar contenido inicial
+  setTimeout(() => {
+    const gc = document.getElementById('gastos-content');
+    if (gc) gc.appendChild(htmlGastosMensuales());
+  }, 0);
   return el;
 }
 
 window.showGTab = function(tab, btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  $('gastos-content').innerHTML = tab === 'nomina' ? htmlNomina() : htmlGastosMensuales();
+  const gc = $('gastos-content'); gc.innerHTML = ''; gc.appendChild(tab === 'nomina' ? (()=>{const d=document.createElement('div');d.innerHTML=htmlNomina();return d;})() : htmlGastosMensuales());
 };
 
 function htmlGastosMensuales() {
