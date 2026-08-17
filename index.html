@@ -1735,17 +1735,45 @@ function htmlGastosMensuales() {
   const gastos = DB.get('gastos').slice().reverse();
   const mes = today().slice(0,7);
   const unidades = DB.get('unidades');
-  return `<div class="section" style="padding-top:14px">
-    <div class="section-title">Este mes — ${fmt(gastos.filter(g=>g.fecha&&g.fecha.startsWith(mes)).reduce((s,g)=>s+Number(g.monto),0))}</div>
-    <button class="btn btn-ghost" style="margin-bottom:14px" onclick="formGasto()">+ Registrar gasto</button>
-    ${gastos.length ? gastos.map(g => {
-      const u = unidades.find(x => x.id === g.unidadId);
-      return '<div class="card"><div class="card-row"><span style="font-weight:600">'+g.concepto+(g.descripcion?' — '+g.descripcion:'')+'</span><span class="card-val" style="color:var(--red)">'+fmt(g.monto)+'</span></div><div class="card-row"><span class="card-label">'+fmtDate(g.fecha)+'</span><div style="display:flex;gap:6px;align-items:center">'+(u?'<span class="badge badge-blue">'+u.nombre+'</span>':'')+chipOwner(g.quien)+'<button onclick="pedirNIP(function(){formGasto(\''+g.id+'\');})" style="background:var(--bg3);border:1px solid var(--border2);color:var(--muted);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">&#9998;</button><button onclick="delGastoNIP(\''+g.id+'\');" style="background:var(--red-light);border:none;color:var(--red);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">&#128465;</button></div></div></div>';
-    }).join('') : '<div class="empty"><div class="empty-icon">📋</div><p>Sin gastos registrados</p></div>'}
-    <div style="height:8px"></div>
-  </div>`;
-}
+  const total = gastos.filter(g=>g.fecha&&g.fecha.startsWith(mes)).reduce((s,g)=>s+Number(g.monto),0);
+  const el = document.createElement('div');
+  el.className = 'section';
+  el.style.paddingTop = '14px';
 
+  let html = '<div class="section-title">Este mes — ' + fmt(total) + '</div>';
+  html += '<button class="btn btn-ghost" style="margin-bottom:14px" onclick="formGasto()">+ Registrar gasto</button>';
+
+  if (gastos.length) {
+    gastos.forEach(g => {
+      const u = unidades.find(x => x.id === g.unidadId);
+      const gid = g.id;
+      html += '<div class="card">';
+      html += '<div class="card-row"><span style="font-weight:600">' + g.concepto + (g.descripcion ? ' — ' + g.descripcion : '') + '</span><span class="card-val" style="color:var(--red)">' + fmt(g.monto) + '</span></div>';
+      html += '<div class="card-row"><span class="card-label">' + fmtDate(g.fecha) + '</span>';
+      html += '<div style="display:flex;gap:6px;align-items:center">';
+      if (u) html += '<span class="badge badge-blue">' + u.nombre + '</span>';
+      html += chipOwner(g.quien);
+      html += '<button id="btn-edit-' + gid + '" style="background:var(--bg3);border:1px solid var(--border2);color:var(--muted);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">&#9998;</button>';
+      html += '<button id="btn-del-' + gid + '" style="background:var(--red-light);border:none;color:var(--red);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">&#128465;</button>';
+      html += '</div></div></div>';
+    });
+  } else {
+    html += '<div class="empty"><div class="empty-icon">&#128203;</div><p>Sin gastos registrados</p></div>';
+  }
+  html += '<div style="height:8px"></div>';
+  el.innerHTML = html;
+
+  // Agregar listeners después de crear el HTML
+  gastos.forEach(g => {
+    const gid = g.id;
+    const btnEdit = el.querySelector('#btn-edit-' + gid);
+    const btnDel = el.querySelector('#btn-del-' + gid);
+    if (btnEdit) btnEdit.addEventListener('click', () => pedirNIP(() => formGasto(gid)));
+    if (btnDel) btnDel.addEventListener('click', () => delGastoNIP(gid));
+  });
+
+  return el;
+}
 window.formGasto = function(editId) {
   const gasto = editId ? DB.get('gastos').find(g => g.id === editId) : null;
   const g = gasto || {};
