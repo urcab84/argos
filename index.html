@@ -68,15 +68,33 @@ async function sincronizarDesdeFirestore() {
 
 window._guardarEnFirestore = async function(coleccion, datos) {
   const indicador = document.getElementById('sync-status');
+  // Verificar que Firebase está disponible
+  if (typeof firebase === 'undefined' || !firebase.firestore) {
+    console.warn('Firebase no disponible');
+    return;
+  }
+  const dbRef = firebase.firestore();
   try {
-    const batch = db.batch();
-    const snap = await db.collection(coleccion).get();
+    const batch = dbRef.batch();
+    const snap = await dbRef.collection(coleccion).get();
     snap.docs.forEach(d => batch.delete(d.ref));
-    datos.forEach(item => { batch.set(db.collection(coleccion).doc(item.id), item); });
+    datos.forEach(item => { batch.set(dbRef.collection(coleccion).doc(item.id), item); });
     await batch.commit();
     if (indicador) { indicador.textContent = '☁ Guardado'; indicador.style.color = '#16a34a'; setTimeout(() => { if(indicador) indicador.textContent = '☁ En linea'; }, 2000); }
   } catch(e) {
     if (indicador) { indicador.textContent = '⚠ Solo local'; indicador.style.color = '#dc2626'; }
+    console.warn('Error guardando en Firestore:', e);
+  }
+};
+
+// Guardar un solo documento directamente
+window._guardarDoc = async function(coleccion, item) {
+  if (typeof firebase === 'undefined' || !firebase.firestore) return;
+  try {
+    await firebase.firestore().collection(coleccion).doc(item.id).set(item);
+    console.log('Guardado en Firebase:', coleccion, item.id);
+  } catch(e) {
+    console.error('Error guardando doc:', coleccion, e);
   }
 };
 
@@ -720,10 +738,7 @@ window.saveNominaRapida = function(operadorId, semIni, semFin) {
   nominas.push(nuevaNomina);
   localStorage.setItem('nominas', JSON.stringify(nominas));
   // Guardar nómina directamente en Firebase
-  if (window.db) {
-    db.collection('nominas').doc(nuevaNomina.id).set(nuevaNomina)
-      .catch(e => console.warn('Error guardando nómina:', e));
-  }
+  window._guardarDoc && window._guardarDoc('nominas', nuevaNomina);
 
   if (quien === 'uriel' || quien === 'kike') {
     const nuevaAp = { id: DB.id(), viajeId: null, quien, monto: total, fecha: semFin, concepto: 'nomina' };
@@ -731,10 +746,7 @@ window.saveNominaRapida = function(operadorId, semIni, semFin) {
     aps.push(nuevaAp);
     localStorage.setItem('aportaciones', JSON.stringify(aps));
     // Guardar aportación directamente en Firebase
-    if (window.db) {
-      db.collection('aportaciones').doc(nuevaAp.id).set(nuevaAp)
-        .catch(e => console.warn('Error guardando aportación nómina:', e));
-    }
+    window._guardarDoc && window._guardarDoc('aportaciones', nuevaAp);
   }
   closeSheet(); render();
 };
@@ -1006,20 +1018,14 @@ window.saveGastoExtra = function(viajeId) {
   // Guardar viaje directamente en Firebase
   const viajeActualizado = viajes[idx];
   localStorage.setItem('viajes', JSON.stringify(viajes));
-  if (window.db) {
-    db.collection('viajes').doc(viajeId).set(viajeActualizado)
-      .catch(e => console.warn('Error guardando gasto extra:', e));
-  }
+  window._guardarDoc && window._guardarDoc('viajes', viajeActualizado);
   if (quien === 'uriel' || quien === 'kike') {
     const nuevaAp = { id: DB.id(), viajeId, quien, monto, fecha, concepto: 'extra-'+concepto };
     const aps = DB.get('aportaciones');
     aps.push(nuevaAp);
     localStorage.setItem('aportaciones', JSON.stringify(aps));
     // Guardar aportación directamente en Firebase
-    if (window.db) {
-      db.collection('aportaciones').doc(nuevaAp.id).set(nuevaAp)
-        .catch(e => console.warn('Error guardando aportación extra:', e));
-    }
+    window._guardarDoc && window._guardarDoc('aportaciones', nuevaAp);
   }
   closeSheet();
   setTimeout(() => editViaje(viajeId), 150);
@@ -1204,8 +1210,8 @@ function formViaje(editId) {
   };
 
   // Siempre cargar de Firebase cuando editamos para tener datos frescos
-  if (editId && window.db) {
-    db.collection('aportaciones').where('viajeId', '==', editId).get().then(snap => {
+  if (editId && typeof firebase !== 'undefined') {
+    firebase.firestore().collection('aportaciones').where('viajeId', '==', editId).get().then(snap => {
       const fromFB = snap.docs.map(d => d.data()).filter(a => a.quien !== 'cliente');
       // Actualizar localStorage con lo de Firebase
       let aps = DB.get('aportaciones').filter(a => a.viajeId !== editId);
@@ -1263,49 +1269,22 @@ window.saveViaje = function(editId) {
     if (idx >= 0) viajes[idx] = Object.assign({}, viajes[idx], data);
     DB.set('viajes', viajes);
     // Guardar viaje directamente en Firebase
-    if (window.db) {
-      db.collection('viajes').doc(editId).set(viajes[viajes.findIndex(v => v.id === editId)])
-        .catch(e => console.warn('Error guardando viaje:', e));
-    }
+    window._guardarDoc && window._guardarDoc('viajes', viajes[viajes.findIndex(v => v.id === editId)]);
     // Borrar aportaciones anteriores de este viaje y agregar nuevas
     let aps = DB.get('aportaciones').filter(a => a.viajeId !== editId);
     const nuevasAps = aports.map(a => ({ id: DB.id(), viajeId: editId, fecha, ...a }));
     nuevasAps.forEach(a => aps.push(a));
     localStorage.setItem('aportaciones', JSON.stringify(aps));
-    // Guardar aportaciones directamente en Firebase SIN usar where query
-    if (window.db) {
-      console.log('Guardando', nuevasAps.length, 'aportaciones directamente en Firebase');
-      // Guardar cada nueva aportación directamente por su ID
-      const promesas = nuevasAps.map(a => {
-        console.log('Guardando aportación:', a.id, 'viajeId:', a.viajeId, 'quien:', a.quien, 'monto:', a.monto);
-        return db.collection('aportaciones').doc(a.id).set(a);
-      });
-      Promise.all(promesas).then(() => {
-        console.log('Todas las aportaciones guardadas en Firebase');
-      }).catch(e => console.error('Error guardando aportación:', e));
-    }
+    nuevasAps.forEach(a => window._guardarDoc && window._guardarDoc('aportaciones', a));
   } else {
     viajes.push(data);
     localStorage.setItem('viajes', JSON.stringify(viajes));
-    // Guardar viaje directamente en Firebase
-    if (window.db) {
-      db.collection('viajes').doc(id).set(data)
-        .catch(e => console.warn('Error guardando viaje:', e));
-    }
+    window._guardarDoc && window._guardarDoc('viajes', data);
     let aps = DB.get('aportaciones');
     const nuevasAps = aports.map(a => ({ id: DB.id(), viajeId: id, fecha, ...a }));
     nuevasAps.forEach(a => aps.push(a));
     localStorage.setItem('aportaciones', JSON.stringify(aps));
-    // Guardar aportaciones directamente en Firebase
-    if (window.db) {
-      const promesas = nuevasAps.map(a => {
-        console.log('Guardando aportación nueva:', a.id, 'viajeId:', a.viajeId, 'quien:', a.quien, 'monto:', a.monto);
-        return db.collection('aportaciones').doc(a.id).set(a);
-      });
-      Promise.all(promesas).then(() => {
-        console.log('Aportaciones de viaje nuevo guardadas');
-      }).catch(e => console.error('Error guardando aportación:', e));
-    }
+    nuevasAps.forEach(a => window._guardarDoc && window._guardarDoc('aportaciones', a));
   }
   closeSheet(); render();
 };
@@ -1552,10 +1531,7 @@ window.saveCobro = function(viajeId, aports, yaU, yaK) {
   cobros.push(nuevoCobro);
   localStorage.setItem('cobros', JSON.stringify(cobros));
   // Guardar directamente en Firebase
-  if (window.db) {
-    db.collection('cobros').doc(nuevoCobro.id).set(nuevoCobro)
-      .catch(e => console.warn('Error guardando cobro:', e));
-  }
+  window._guardarDoc && window._guardarDoc('cobros', nuevoCobro);
   closeSheet(); render();
 };
 
@@ -1686,9 +1662,9 @@ window.delGastoNIP = function(id) {
     const aBorrar = aps.filter(a => a.gastoId === id);
     DB.set('aportaciones', aps.filter(a => a.gastoId !== id));
     // Borrar en Firebase
-    if (window.db && aBorrar.length > 0) {
+    if (aBorrar.length > 0 && typeof firebase !== 'undefined') {
       aBorrar.forEach(a => {
-        db.collection('aportaciones').doc(a.id).delete()
+        firebase.firestore().collection('aportaciones').doc(a.id).delete()
           .catch(e => console.warn('Error borrando aportación:', e));
       });
     }
@@ -1710,10 +1686,7 @@ window.saveGasto = function() {
   gastos.push(nuevoGasto);
   localStorage.setItem('gastos', JSON.stringify(gastos));
   // Guardar directamente en Firebase
-  if (window.db) {
-    db.collection('gastos').doc(nuevoGasto.id).set(nuevoGasto)
-      .catch(e => console.warn('Error guardando gasto:', e));
-  }
+  window._guardarDoc && window._guardarDoc('gastos', nuevoGasto);
 
   if (quien === 'uriel' || quien === 'kike') {
     const nuevaAp = { id: DB.id(), viajeId: null, quien, monto, fecha, concepto: 'gasto-'+concepto, gastoId: nuevoGasto.id };
@@ -1721,10 +1694,7 @@ window.saveGasto = function() {
     aps.push(nuevaAp);
     localStorage.setItem('aportaciones', JSON.stringify(aps));
     // Guardar directamente en Firebase
-    if (window.db) {
-      db.collection('aportaciones').doc(nuevaAp.id).set(nuevaAp)
-        .catch(e => console.warn('Error guardando aportación gasto:', e));
-    }
+    window._guardarDoc && window._guardarDoc('aportaciones', nuevaAp);
   }
   closeSheet(); render();
 };
