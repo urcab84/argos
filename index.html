@@ -1717,30 +1717,37 @@ window.saveCobro = function(viajeId, aports, yaU, yaK) {
 // ══════════════════════════════════════════════════════
 function renderGastos() {
   const el = document.createElement('div');
-  el.innerHTML = `
-  <div class="tab-strip">
-    <button class="tab-btn active" onclick="showGTab('mensuales',this)">Mensuales</button>
-    <button class="tab-btn" onclick="showGTab('nomina',this)">Nómina</button>
-  </div>
-  <div id="gastos-content">${htmlGastosMensuales()}</div>`;
+  const tabStrip = document.createElement('div');
+  tabStrip.className = 'tab-strip';
+  tabStrip.innerHTML = '<button class="tab-btn active" onclick="showGTab(\'mensuales\',this)">Mensuales</button><button class="tab-btn" onclick="showGTab(\'nomina\',this)">Nomina</button>';
+  el.appendChild(tabStrip);
+  const gc = document.createElement('div');
+  gc.id = 'gastos-content';
+  gc.appendChild(htmlGastosMensuales());
+  el.appendChild(gc);
   return el;
 }
-
 window.showGTab = function(tab, btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  $('gastos-content').innerHTML = tab === 'nomina' ? htmlNomina() : htmlGastosMensuales();
+  const gc = $('gastos-content');
+  gc.innerHTML = '';
+  if (tab === 'nomina') {
+    gc.innerHTML = htmlNomina();
+  } else {
+    gc.appendChild(htmlGastosMensuales());
+  }
 };
 
 function htmlGastosMensuales() {
   const gastos = DB.get('gastos').slice().reverse();
   const mes = today().slice(0,7);
   const unidades = DB.get('unidades');
-  const total = gastos.filter(g=>g.fecha&&g.fecha.startsWith(mes)).reduce((s,g)=>s+Number(g.monto),0);
+  const totalMes = gastos.filter(g=>g.fecha&&g.fecha.startsWith(mes)).reduce((s,g)=>s+Number(g.monto),0);
   const el = document.createElement('div');
   el.className = 'section';
   el.style.paddingTop = '14px';
-  let html = '<div class="section-title">Este mes — ' + fmt(total) + '</div>';
+  let html = '<div class="section-title">Este mes — ' + fmt(totalMes) + '</div>';
   html += '<button class="btn btn-ghost" style="margin-bottom:14px" onclick="formGasto()">+ Registrar gasto</button>';
   if (gastos.length) {
     gastos.forEach(g => {
