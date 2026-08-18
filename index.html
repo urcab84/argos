@@ -618,7 +618,8 @@ function viajeDeuda(viajeId) {
 const overlay = $('sheet-overlay');
 function openSheet(title, html, onOpen) {
   $('sheet-title').textContent = title;
-  $('sheet-body').innerHTML = html;
+  const sb = $('sheet-body'); sb.innerHTML = '';
+  if (typeof html === 'string') { sb.innerHTML = html; } else { sb.appendChild(html); }
   overlay.classList.add('open');
   if (onOpen) onOpen();
 }
@@ -1721,19 +1722,14 @@ function renderGastos() {
     <button class="tab-btn active" onclick="showGTab('mensuales',this)">Mensuales</button>
     <button class="tab-btn" onclick="showGTab('nomina',this)">Nómina</button>
   </div>
-  <div id="gastos-content"></div>`;
-  // Cargar contenido inicial
-  setTimeout(() => {
-    const gc = document.getElementById('gastos-content');
-    if (gc) gc.appendChild(htmlGastosMensuales());
-  }, 0);
+  <div id="gastos-content">${htmlGastosMensuales()}</div>`;
   return el;
 }
 
 window.showGTab = function(tab, btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  const gc = $('gastos-content'); gc.innerHTML = ''; gc.appendChild(tab === 'nomina' ? (()=>{const d=document.createElement('div');d.innerHTML=htmlNomina();return d;})() : htmlGastosMensuales());
+  $('gastos-content').innerHTML = tab === 'nomina' ? htmlNomina() : htmlGastosMensuales();
 };
 
 function htmlGastosMensuales() {
@@ -1755,6 +1751,7 @@ function htmlGastosMensuales() {
       html += '<div style="display:flex;gap:6px;align-items:center">';
       if (u) html += '<span class="badge badge-blue">' + u.nombre + '</span>';
       html += chipOwner(g.quien);
+      html += '<button data-gid="' + g.id + '" class="btn-edit-gasto" style="background:var(--bg3);border:1px solid var(--border2);color:var(--muted);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">&#9998;</button>';
       html += '<button data-gid="' + g.id + '" class="btn-del-gasto" style="background:var(--red-light);border:none;color:var(--red);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">&#128465;</button>';
       html += '</div></div></div>';
     });
@@ -1763,80 +1760,137 @@ function htmlGastosMensuales() {
   }
   html += '<div style="height:8px"></div>';
   el.innerHTML = html;
+  el.querySelectorAll('.btn-edit-gasto').forEach(btn => {
+    btn.addEventListener('click', () => pedirNIP(() => formGasto(btn.dataset.gid)));
+  });
   el.querySelectorAll('.btn-del-gasto').forEach(btn => {
     btn.addEventListener('click', () => delGastoNIP(btn.dataset.gid));
   });
   return el;
 }
 
-window.formGasto = function() {
+
+window.formGasto = function(editId) {
+  const gasto = editId ? DB.get('gastos').find(g => g.id === editId) : null;
+  const g = gasto || {};
   const unidades = DB.get('unidades');
-  openSheet('Nuevo gasto', `
-    <div class="form-group"><label class="form-label">FECHA</label><input class="form-input" type="date" id="g-fecha" value="${today()}"></div>
+  const aportsExist = editId ? DB.get('aportaciones').filter(a => a.gastoId === editId) : [];
+  const aportsIni = aportsExist.length ? aportsExist : [{quien:'caja', monto:''}];
+  window._garowCount = aportsIni.length;
+
+  const body = document.createElement('div');
+  body.innerHTML = `
+    <div class="form-group"><label class="form-label">FECHA</label><input class="form-input" type="date" id="g-fecha" value="${g.fecha||today()}"></div>
     <div class="form-group"><label class="form-label">CONCEPTO</label>
       <select class="form-select" id="g-concepto">
-        <option>Patio</option><option>GPS</option><option>Seguro</option>
-        <option>Mantenimiento</option><option>Descompostura</option><option>Otro</option>
+        <option${g.concepto==='Patio'?' selected':''}>Patio</option>
+        <option${g.concepto==='GPS'?' selected':''}>GPS</option>
+        <option${g.concepto==='Seguro'?' selected':''}>Seguro</option>
+        <option${g.concepto==='Mantenimiento'?' selected':''}>Mantenimiento</option>
+        <option${g.concepto==='Descompostura'?' selected':''}>Descompostura</option>
+        <option${!g.concepto||g.concepto==='Otro'?' selected':''}>Otro</option>
       </select>
     </div>
     <div class="form-group"><label class="form-label">UNIDAD</label>
       <select class="form-select" id="g-unidad">
         <option value="">General</option>
-        ${unidades.map(u => '<option value="'+u.id+'">'+u.nombre+'</option>').join('')}
+        ${unidades.map(u => '<option value="'+u.id+'"'+(g.unidadId===u.id?' selected':'')+'>'+u.nombre+'</option>').join('')}
       </select>
     </div>
-    <div class="form-group"><label class="form-label">DESCRIPCION</label><input class="form-input" type="text" id="g-desc" placeholder="ej. Alternador, renta patio..."></div>
-    <div class="form-group"><label class="form-label">MONTO ($)</label><input class="form-input" type="number" id="g-monto" placeholder="0"></div>
-    <div class="form-group"><label class="form-label">PAGADO POR</label>
-      <select class="form-select" id="g-quien">
-        <option value="caja">Caja comun</option>
-        <option value="uriel">Uriel (saldo a favor)</option>
-        <option value="kike">Kike (saldo a favor)</option>
-      </select>
+    <div class="form-group"><label class="form-label">DESCRIPCION</label>
+      <input class="form-input" type="text" id="g-desc" value="${g.descripcion||''}" placeholder="ej. Alternador, renta patio...">
     </div>
-    <button class="btn btn-primary" onclick="saveGasto()">Guardar gasto</button>
-  `);
-};
-window.delGastoNIP = function(id) {
-  pedirNIP(async () => {
-    const aBorrar = DB.get('aportaciones').filter(a => a.gastoId === id);
-    localStorage.setItem('gastos', JSON.stringify(DB.get('gastos').filter(g => g.id !== id)));
-    localStorage.setItem('aportaciones', JSON.stringify(DB.get('aportaciones').filter(a => a.gastoId !== id)));
-    if (typeof firebase !== 'undefined') {
-      const db2 = firebase.firestore();
-      try {
-        await db2.collection('gastos').doc(id).delete();
-        console.log('Gasto borrado de Firebase:', id);
-        for (const a of aBorrar) {
-          await db2.collection('aportaciones').doc(a.id).delete();
-        }
-      } catch(e) {
-        console.error('Error borrando gasto:', e);
-      }
-    }
-    render();
+    <div class="form-group"><label class="form-label">MONTO ($)</label>
+      <input class="form-input" type="number" id="g-monto" value="${g.monto||''}" placeholder="0">
+    </div>
+    <div class="divider"></div>
+    <div class="section-title" style="margin-bottom:6px">Quien pago</div>
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span class="card-label">Monto del gasto</span><span id="tgf-total" style="font-family:var(--mono);font-weight:600">$0</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span class="card-label">Total asignado</span><span id="tgf-asig" style="font-family:var(--mono);color:var(--blue)">$0</span>
+      </div>
+      <div style="height:1px;background:var(--border);margin:6px 0"></div>
+      <div style="display:flex;justify-content:space-between">
+        <span style="font-weight:600">Diferencia</span><span id="tgf-diff" style="font-family:var(--mono);font-weight:700">$0</span>
+      </div>
+    </div>
+    <div id="gaports-container"></div>
+    <button class="btn btn-ghost btn-sm" style="margin-bottom:16px" id="btn-add-gaport">+ Agregar fuente</button>
+    <button class="btn btn-primary" id="btn-save-gasto">Guardar gasto</button>
+  `;
+
+  const makeRow = (i, quien, monto) => {
+    const row = document.createElement('div');
+    row.className = 'apor-row'; row.id = 'garow-'+i;
+    row.innerHTML = '<select class="form-select" id="gaq-'+i+'" style="flex:0 0 130px"><option value="caja"'+(quien==='caja'?' selected':'')+'>Caja comun</option><option value="uriel"'+(quien==='uriel'?' selected':'')+'>Uriel</option><option value="kike"'+(quien==='kike'?' selected':'')+'>Kike</option></select><input class="form-input" type="number" id="gam-'+i+'" placeholder="Monto $" value="'+(monto||'')+'"><button style="background:var(--red-light);border:none;color:var(--red);width:32px;height:32px;border-radius:8px;font-size:16px;cursor:pointer;flex-shrink:0">x</button>';
+    row.querySelector('input').addEventListener('input', calcTGF);
+    row.querySelector('select').addEventListener('change', calcTGF);
+    row.querySelector('button').addEventListener('click', () => { row.remove(); calcTGF(); });
+    return row;
+  };
+
+  const container = body.querySelector('#gaports-container');
+  aportsIni.forEach((a, i) => container.appendChild(makeRow(i, a.quien, a.monto)));
+
+  body.querySelector('#btn-add-gaport').addEventListener('click', () => {
+    window._garowCount++;
+    container.appendChild(makeRow(window._garowCount, 'caja', ''));
+    calcTGF();
   });
+
+  function calcTGF() {
+    const monto = parseFloat(document.getElementById('g-monto')?.value) || 0;
+    let asig = 0;
+    document.querySelectorAll('[id^="gam-"]').forEach(el => { asig += parseFloat(el.value)||0; });
+    const diff = asig - monto;
+    const f = n => '$' + Math.abs(n).toLocaleString('es-MX', {maximumFractionDigits:0});
+    const totEl = document.getElementById('tgf-total');
+    const asigEl = document.getElementById('tgf-asig');
+    const diffEl = document.getElementById('tgf-diff');
+    if (totEl) totEl.textContent = f(monto);
+    if (asigEl) asigEl.textContent = f(asig);
+    if (diffEl) { diffEl.textContent = (diff>=0?'+':'-')+f(diff); diffEl.style.color = diff===0?'var(--green)':diff>0?'var(--amber)':'var(--red)'; }
+  }
+  window.calcTGF = calcTGF;
+  body.querySelector('#g-monto').addEventListener('input', calcTGF);
+  body.querySelector('#btn-save-gasto').addEventListener('click', () => window.saveGasto(editId||null));
+
+  openSheet(editId ? 'Editar gasto' : 'Nuevo gasto', body);
+  setTimeout(calcTGF, 100);
 };
 
-window.saveGasto = function() {
+window.saveGasto = function(editId) {
   const fecha = $('g-fecha') ? $('g-fecha').value : today();
   const concepto = $('g-concepto') ? $('g-concepto').value : '';
   const descripcion = $('g-desc') ? $('g-desc').value : '';
   const monto = parseFloat($('g-monto') ? $('g-monto').value : 0) || 0;
-  const quien = $('g-quien') ? $('g-quien').value : 'caja';
   const unidadId = ($('g-unidad') ? $('g-unidad').value : '') || null;
   if (!monto) { alert('Ingresa el monto'); return; }
-  const nuevoGasto = { id: DB.id(), fecha, concepto, descripcion, monto, quien, unidadId };
-  const gastos = DB.get('gastos');
-  gastos.push(nuevoGasto);
+  const aports = [];
+  document.querySelectorAll('[id^="gaq-"]').forEach(sel => {
+    const i = sel.id.split('-')[1];
+    const m = parseFloat(document.getElementById('gam-'+i)?.value) || 0;
+    if (m > 0) aports.push({ quien: sel.value, monto: m });
+  });
+  const quien = aports.length === 1 ? aports[0].quien : aports.length > 1 ? 'mixto' : 'caja';
+  const gastoId = editId || DB.id();
+  const nuevoGasto = { id: gastoId, fecha, concepto, descripcion, monto, quien, unidadId };
+  let gastos = DB.get('gastos');
+  if (editId) { gastos = gastos.map(g => g.id === editId ? nuevoGasto : g); } else { gastos.push(nuevoGasto); }
   localStorage.setItem('gastos', JSON.stringify(gastos));
   window._guardarDoc && window._guardarDoc('gastos', nuevoGasto);
-  if (quien === 'uriel' || quien === 'kike') {
-    const nuevaAp = { id: DB.id(), viajeId: null, quien, monto, fecha, concepto: 'gasto-'+concepto, gastoId: nuevoGasto.id };
-    const aps = DB.get('aportaciones');
-    aps.push(nuevaAp);
-    localStorage.setItem('aportaciones', JSON.stringify(aps));
-    window._guardarDoc && window._guardarDoc('aportaciones', nuevaAp);
+  const apsAntiguasIds = editId ? DB.get('aportaciones').filter(a => a.gastoId === editId).map(a => a.id) : [];
+  let aps = DB.get('aportaciones').filter(a => a.gastoId !== gastoId);
+  const nuevasAps = aports.map(a => ({ id: DB.id(), viajeId: null, quien: a.quien, monto: a.monto, fecha, concepto: 'gasto-'+concepto, gastoId }));
+  nuevasAps.forEach(a => aps.push(a));
+  localStorage.setItem('aportaciones', JSON.stringify(aps));
+  if (typeof firebase !== 'undefined') {
+    const db2 = firebase.firestore();
+    apsAntiguasIds.forEach(aid => db2.collection('aportaciones').doc(aid).delete().catch(()=>{}));
+    nuevasAps.forEach(a => window._guardarDoc && window._guardarDoc('aportaciones', a));
   }
   closeSheet(); render();
 };
