@@ -1204,7 +1204,10 @@ window.delViajeNIP = function(id) {
 let _arowCount = 0;
 // Quitar anticipo cliente de aportRow — solo socios y caja
 function aportRow(i, a) {
-  return '<div class="apor-row" id="arow-'+i+'"><select class="form-select" id="aq-'+i+'" style="flex:0 0 130px"><option value="caja"'+(a.quien==='caja'?' selected':'')+'>Caja común</option><option value="uriel"'+(a.quien==='uriel'?' selected':'')+'>Uriel</option><option value="kike"'+(a.quien==='kike'?' selected':'')+'>Kike</option></select><input class="form-input" type="number" id="am-'+i+'" placeholder="Monto $" value="'+(a.monto||'')+'"><button style="background:var(--red-light);border:none;color:var(--red);width:32px;height:32px;border-radius:8px;font-size:16px;cursor:pointer;flex-shrink:0" onclick="document.getElementById(\'arow-'+i+'\').remove()">×</button></div>';
+  const proveedores = DB.get('proveedores');
+  const provOpts = proveedores.map(p => '<option value="prov-'+p.id+'"'+(a.quien==='prov-'+p.id?' selected':'')+'>'+p.nombre+'</option>').join('');
+  const provGroup = provOpts ? '<optgroup label="Proveedores">'+provOpts+'</optgroup>' : '';
+  return '<div class="apor-row" id="arow-'+i+'"><select class="form-select" id="aq-'+i+'" style="flex:0 0 150px"><option value="caja"'+(a.quien==='caja'?' selected':'')+'>Caja comun</option><option value="uriel"'+(a.quien==='uriel'?' selected':'')+'>Uriel</option><option value="kike"'+(a.quien==='kike'?' selected':'')+'>Kike</option>'+provGroup+'</select><input class="form-input" type="number" id="am-'+i+'" placeholder="Monto $" value="'+(a.monto||'')+'"><button style="background:var(--red-light);border:none;color:var(--red);width:32px;height:32px;border-radius:8px;font-size:16px;cursor:pointer;flex-shrink:0" onclick="document.getElementById(\'arow-'+i+'\').remove();calcTotalGastos()">x</button></div>';
 }
 
 window.calcTotalGastos = function() {
@@ -1437,23 +1440,41 @@ window.saveViaje = function(editId) {
     const idx = viajes.findIndex(v => v.id === editId);
     if (idx >= 0) viajes[idx] = Object.assign({}, viajes[idx], data);
     DB.set('viajes', viajes);
-    // Guardar viaje directamente en Firebase
     window._guardarDoc && window._guardarDoc('viajes', viajes[viajes.findIndex(v => v.id === editId)]);
-    // Borrar aportaciones anteriores de este viaje y agregar nuevas
     let aps = DB.get('aportaciones').filter(a => a.viajeId !== editId);
-    const nuevasAps = aports.map(a => ({ id: DB.id(), viajeId: editId, fecha, ...a }));
+    const nuevasAps = []; const nuevosCargos = [];
+    aports.forEach(a => {
+      if (a.quien && a.quien.startsWith('prov-')) {
+        nuevosCargos.push({ id: DB.id(), proveedorId: a.quien.replace('prov-',''), fecha, concepto: origen+'->'+destino, monto: a.monto, viajeId: editId, gastoId: null, notas: '' });
+      } else {
+        nuevasAps.push({ id: DB.id(), viajeId: editId, fecha, ...a });
+      }
+    });
     nuevasAps.forEach(a => aps.push(a));
     localStorage.setItem('aportaciones', JSON.stringify(aps));
     nuevasAps.forEach(a => window._guardarDoc && window._guardarDoc('aportaciones', a));
+    const cargos = DB.get('cargosProveedor').filter(c => c.viajeId !== editId);
+    nuevosCargos.forEach(c => { cargos.push(c); window._guardarDoc && window._guardarDoc('cargosProveedor', c); });
+    localStorage.setItem('cargosProveedor', JSON.stringify(cargos));
   } else {
     viajes.push(data);
     localStorage.setItem('viajes', JSON.stringify(viajes));
     window._guardarDoc && window._guardarDoc('viajes', data);
     let aps = DB.get('aportaciones');
-    const nuevasAps = aports.map(a => ({ id: DB.id(), viajeId: id, fecha, ...a }));
+    const nuevasAps = []; const nuevosCargos = [];
+    aports.forEach(a => {
+      if (a.quien && a.quien.startsWith('prov-')) {
+        nuevosCargos.push({ id: DB.id(), proveedorId: a.quien.replace('prov-',''), fecha, concepto: origen+'->'+destino, monto: a.monto, viajeId: id, gastoId: null, notas: '' });
+      } else {
+        nuevasAps.push({ id: DB.id(), viajeId: id, fecha, ...a });
+      }
+    });
     nuevasAps.forEach(a => aps.push(a));
     localStorage.setItem('aportaciones', JSON.stringify(aps));
     nuevasAps.forEach(a => window._guardarDoc && window._guardarDoc('aportaciones', a));
+    const cargos = DB.get('cargosProveedor');
+    nuevosCargos.forEach(c => { cargos.push(c); window._guardarDoc && window._guardarDoc('cargosProveedor', c); });
+    localStorage.setItem('cargosProveedor', JSON.stringify(cargos));
   }
   closeSheet(); render();
 };
