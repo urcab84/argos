@@ -1039,6 +1039,13 @@ window.editViaje = function(id) {
   const gastosExtra = v.gastosExtra || [];
   const totalGastosExtra = gastosExtra.reduce((s,g) => s + Number(g.monto||0), 0);
 
+  // Cálculo de rentabilidad
+  const flete = Number(v.flete||0);
+  const pagoChofer = flete * (Number(v.pctChofer||0)/100);
+  const totalGastos = Number(v.casetas||0) + Number(v.combustible||0) + Number(v.viatico||0) + Number(v.otrosGastos||0) + totalGastosExtra + pagoChofer;
+  const utilidad = flete - totalGastos;
+  const margen = flete > 0 ? Math.round((utilidad/flete)*100) : 0;
+
   openSheet('Detalle del viaje', `
     <div class="card-row" style="margin-bottom:10px">
       <span style="font-size:14px;font-weight:700">${v.origen} → ${v.destino}</span>
@@ -1053,13 +1060,29 @@ window.editViaje = function(id) {
     <div class="card-row"><span class="card-label">Operador</span><span>${op ? op.nombre : '—'}</span></div>
     ${v.km ? '<div class="card-row"><span class="card-label">Kilómetros</span><span class="card-val">'+Number(v.km).toLocaleString('es-MX')+' km</span></div>' : ''}
     <div class="divider"></div>
+
+    <div class="section-title">Rentabilidad del viaje</div>
+    <div class="card" style="border-left:3px solid ${utilidad>=0?'var(--green)':'var(--red)'};margin-bottom:12px">
+      <div class="card-row"><span class="card-label">Flete cobrado</span><span class="card-val" style="color:var(--blue)">${fmt(flete)}</span></div>
+      <div class="card-row"><span class="card-label">Casetas + Combustible</span><span class="card-val">-${fmt(Number(v.casetas||0)+Number(v.combustible||0))}</span></div>
+      <div class="card-row"><span class="card-label">Viático + Otros</span><span class="card-val">-${fmt(Number(v.viatico||0)+Number(v.otrosGastos||0))}</span></div>
+      ${totalGastosExtra > 0 ? '<div class="card-row"><span class="card-label">Gastos en camino</span><span class="card-val">-'+fmt(totalGastosExtra)+'</span></div>' : ''}
+      <div class="card-row"><span class="card-label">Pago chofer (${v.pctChofer||0}%)</span><span class="card-val" style="color:var(--orange)">-${fmt(pagoChofer)}</span></div>
+      <div style="height:1px;background:var(--border);margin:8px 0"></div>
+      <div class="card-row">
+        <span style="font-weight:700">Utilidad del viaje</span>
+        <span style="font-size:18px;font-weight:700;font-family:var(--mono);color:${utilidad>=0?'var(--green)':'var(--red)'}">${fmt(utilidad)}</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;text-align:right">Margen: ${margen}%</div>
+    </div>
+
     <div class="card-row"><span class="card-label">Flete</span><span class="card-val" style="color:var(--blue)">${fmt(v.flete)}</span></div>
     <div class="card-row"><span class="card-label">Casetas</span><span class="card-val">-${fmt(v.casetas)}</span></div>
     <div class="card-row"><span class="card-label">Combustible</span><span class="card-val">-${fmt(v.combustible)}</span></div>
     <div class="card-row"><span class="card-label">Viático</span><span class="card-val">-${fmt(v.viatico)}</span></div>
     <div class="card-row"><span class="card-label">Otros gastos</span><span class="card-val">-${fmt(v.otrosGastos)}</span></div>
     <div class="card-row"><span class="card-label">% al chofer</span><span class="card-val">${v.pctChofer||0}%</span></div>
-    <div class="card-row"><span class="card-label">Pago chofer estimado</span><span class="card-val" style="color:var(--orange)">${fmt((Number(v.flete)||0)*(Number(v.pctChofer)||0)/100)}</span></div>
+    <div class="card-row"><span class="card-label">Pago chofer estimado</span><span class="card-val" style="color:var(--orange)">${fmt(pagoChofer)}</span></div>
     <div class="divider"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <span class="section-title" style="margin-bottom:0">Gastos en camino</span>
@@ -1168,33 +1191,26 @@ window.borrarGastoExtra = function(viajeId, gIdx) {
 
 window.delViajeNIP = function(id) {
   pedirNIP(async () => {
-    // Obtener cobros y aportaciones del viaje ANTES de borrar del localStorage
     const cobrosDelViaje = DB.get('cobros').filter(c => c.viajeId === id);
     const aportsDelViaje = DB.get('aportaciones').filter(a => a.viajeId === id);
+    const cargosDelViaje = DB.get('cargosProveedor').filter(c => c.viajeId === id);
 
     // Borrar en localStorage
     localStorage.setItem('viajes', JSON.stringify(DB.get('viajes').filter(v => v.id !== id)));
     localStorage.setItem('cobros', JSON.stringify(DB.get('cobros').filter(c => c.viajeId !== id)));
     localStorage.setItem('aportaciones', JSON.stringify(DB.get('aportaciones').filter(a => a.viajeId !== id)));
+    localStorage.setItem('cargosProveedor', JSON.stringify(DB.get('cargosProveedor').filter(c => c.viajeId !== id)));
 
-    // Borrar en Firebase directamente por ID
+    // Borrar en Firebase
     if (typeof firebase !== 'undefined') {
       const db2 = firebase.firestore();
       try {
         await db2.collection('viajes').doc(id).delete();
-        console.log('Viaje borrado de Firebase:', id);
-        // Borrar cobros por ID
-        for (const c of cobrosDelViaje) {
-          await db2.collection('cobros').doc(c.id).delete();
-        }
-        // Borrar aportaciones por ID
-        for (const a of aportsDelViaje) {
-          await db2.collection('aportaciones').doc(a.id).delete();
-        }
-        console.log('Borrado completo del viaje:', id);
-      } catch(e) {
-        console.error('Error borrando viaje de Firebase:', e);
-      }
+        for (const c of cobrosDelViaje) await db2.collection('cobros').doc(c.id).delete();
+        for (const a of aportsDelViaje) await db2.collection('aportaciones').doc(a.id).delete();
+        for (const c of cargosDelViaje) await db2.collection('cargosProveedor').doc(c.id).delete();
+        console.log('Viaje borrado completo:', id);
+      } catch(e) { console.error('Error borrando viaje:', e); }
     }
     closeSheet(); render();
   });
@@ -1875,62 +1891,76 @@ window.formCargoProv = function(proveedorId) {
   });
 };
 
-window.formPagoProv = function(proveedorId, saldoActual) {
+window.formPagoProv = function(proveedorId, saldoActual, editPagoId) {
   const p = DB.get('proveedores').find(x => x.id === proveedorId)||{};
+  const pagoExist = editPagoId ? DB.get('pagosProveedor').find(x => x.id === editPagoId) : {};
+  const pe = pagoExist || {};
   const body = document.createElement('div');
   body.innerHTML = `
-    <div class="alert alert-blue" style="margin-bottom:12px">Saldo pendiente: <strong>${fmt(saldoActual)}</strong></div>
-    <div style="display:flex;gap:8px;margin-bottom:14px">
-      <button class="btn btn-ghost btn-sm" id="btn-pago-total" style="flex:1;border-color:var(--green);color:var(--green)">Pago total ${fmt(saldoActual)}</button>
-      <button class="btn btn-ghost btn-sm" id="btn-pago-mitad" style="flex:1">Mitad ${fmt(saldoActual/2)}</button>
+    <div class="alert alert-blue" style="margin-bottom:12px">
+      <strong>${p.nombre||'Proveedor'}</strong> — Saldo pendiente: <strong>${fmt(saldoActual)}</strong>
     </div>
     <div class="form-group"><label class="form-label">FECHA</label>
-      <input class="form-input" type="date" id="pp-fecha" value="${today()}">
+      <input class="form-input" type="date" id="pp-fecha" value="${pe.fecha||today()}">
     </div>
     <div class="form-group"><label class="form-label">MONTO A PAGAR ($)</label>
-      <input class="form-input" type="number" id="pp-monto" value="${saldoActual}" placeholder="0">
+      <input class="form-input" type="number" id="pp-monto" value="${pe.monto||''}" placeholder="Ingresa el monto">
     </div>
     <div class="form-group"><label class="form-label">PAGADO CON</label>
       <select class="form-select" id="pp-quien">
-        <option value="caja">Caja comun</option>
-        <option value="uriel">Uriel</option>
-        <option value="kike">Kike</option>
+        <option value="caja"${pe.quien==='caja'?' selected':''}>Caja comun</option>
+        <option value="uriel"${pe.quien==='uriel'?' selected':''}>Uriel</option>
+        <option value="kike"${pe.quien==='kike'?' selected':''}>Kike</option>
       </select>
     </div>
     <div class="form-group"><label class="form-label">FORMA DE PAGO</label>
       <select class="form-select" id="pp-forma">
-        <option value="efectivo">Efectivo</option>
-        <option value="transferencia">Transferencia</option>
+        <option value="efectivo"${pe.forma==='efectivo'?' selected':''}>Efectivo</option>
+        <option value="transferencia"${pe.forma==='transferencia'?' selected':''}>Transferencia</option>
       </select>
     </div>
     <div class="form-group"><label class="form-label">NOTAS</label>
-      <input class="form-input" type="text" id="pp-notas" placeholder="Referencia...">
+      <input class="form-input" type="text" id="pp-notas" value="${pe.notas||''}" placeholder="Referencia, numero de transaccion...">
     </div>
-    <button class="btn btn-primary" id="btn-guardar-pago-prov">Confirmar pago</button>
+    <button class="btn btn-primary" id="btn-guardar-pago-prov">${editPagoId ? 'Actualizar pago' : 'Confirmar pago'}</button>
   `;
-  openSheet('Pago — '+p.nombre, body);
-  document.getElementById('btn-pago-total').addEventListener('click', () => { document.getElementById('pp-monto').value = saldoActual; });
-  document.getElementById('btn-pago-mitad').addEventListener('click', () => { document.getElementById('pp-monto').value = Math.round(saldoActual/2); });
+  openSheet((editPagoId ? 'Editar pago' : 'Registrar pago') + ' — '+p.nombre, body);
   document.getElementById('btn-guardar-pago-prov').addEventListener('click', () => {
     const monto = parseFloat(document.getElementById('pp-monto').value)||0;
     if (!monto) { alert('Ingresa el monto'); return; }
     const quien = document.getElementById('pp-quien').value;
-    const item = { id: DB.id(), proveedorId, fecha: document.getElementById('pp-fecha').value, monto, quien, forma: document.getElementById('pp-forma').value, notas: document.getElementById('pp-notas').value };
-    const pagos = DB.get('pagosProveedor');
+    const fecha = document.getElementById('pp-fecha').value;
+    const forma = document.getElementById('pp-forma').value;
+    const notas = document.getElementById('pp-notas').value;
+    const pagoId = editPagoId || DB.id();
+    const item = { id: pagoId, proveedorId, fecha, monto, quien, forma, notas };
+
+    // Actualizar pagos
+    let pagos = DB.get('pagosProveedor').filter(x => x.id !== pagoId);
     pagos.push(item);
     localStorage.setItem('pagosProveedor', JSON.stringify(pagos));
     window._guardarDoc && window._guardarDoc('pagosProveedor', item);
-    // Generar aportación si pagó Uriel o Kike
+
+    // Actualizar aportación si pagó Uriel o Kike
     if (quien === 'uriel' || quien === 'kike') {
-      const ap = { id: DB.id(), viajeId: null, quien, monto, fecha: item.fecha, concepto: 'pago-proveedor' };
+      // Borrar aportación anterior si era edición
+      if (editPagoId) {
+        const apsAnt = DB.get('aportaciones').filter(a => a.pagoProvId !== editPagoId);
+        localStorage.setItem('aportaciones', JSON.stringify(apsAnt));
+        if (typeof firebase !== 'undefined') {
+          DB.get('aportaciones').filter(a => a.pagoProvId === editPagoId).forEach(a => {
+            firebase.firestore().collection('aportaciones').doc(a.id).delete().catch(()=>{});
+          });
+        }
+      }
+      const ap = { id: DB.id(), viajeId: null, quien, monto, fecha, concepto: 'pago-proveedor', pagoProvId: pagoId };
       const aps = DB.get('aportaciones');
       aps.push(ap);
       localStorage.setItem('aportaciones', JSON.stringify(aps));
       window._guardarDoc && window._guardarDoc('aportaciones', ap);
     }
     closeSheet();
-    const tab = document.querySelector('.tab-btn:nth-child(3)');
-    if (tab) showGTab('proveedores', tab);
+    setTimeout(() => detalleProv(proveedorId), 100);
   });
 };
 
@@ -1952,7 +1982,10 @@ window.detalleProv = function(proveedorId) {
     html += '<div class="section-title">Cargos</div>';
     cargos.forEach(c => {
       const v = c.viajeId ? viajes.find(x => x.id === c.viajeId) : null;
-      html += '<div class="card"><div class="card-row"><span style="font-weight:600">'+c.concepto+'</span><span class="card-val" style="color:var(--red)">'+fmt(c.monto)+'</span></div><div class="card-row"><span class="card-label">'+fmtDate(c.fecha)+(v?' · '+v.origen+'->'+v.destino:'')+'</span></div></div>';
+      html += '<div class="card"><div class="card-row"><span style="font-weight:600">'+c.concepto+'</span><span class="card-val" style="color:var(--red)">'+fmt(c.monto)+'</span></div>';
+      html += '<div class="card-row"><span class="card-label">'+fmtDate(c.fecha)+(v?' · '+v.origen+'->'+v.destino:'')+'</span>';
+      html += '<button data-cid="'+c.id+'" class="btn-del-cargo" style="background:var(--red-light);border:none;color:var(--red);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">&#128465;</button>';
+      html += '</div></div>';
     });
   }
   if (pagos.length) {
@@ -1960,13 +1993,36 @@ window.detalleProv = function(proveedorId) {
     pagos.forEach(x => {
       const quienLabel = {caja:'Caja comun', uriel:'Uriel', kike:'Kike'}[x.quien] || x.quien || '';
       html += '<div class="card"><div class="card-row"><span style="font-weight:600">Abono</span><span class="card-val" style="color:var(--green)">'+fmt(x.monto)+'</span></div>';
-      html += '<div class="card-row"><span class="card-label">'+fmtDate(x.fecha)+' · '+(x.forma||'')+'</span>'+(quienLabel?'<span class="badge badge-green">'+quienLabel+'</span>':'')+'</div></div>';
+      html += '<div class="card-row"><span class="card-label">'+fmtDate(x.fecha)+' · '+(x.forma||'')+'</span>';
+      html += (quienLabel?'<span class="badge badge-green">'+quienLabel+'</span>':'');
+      html += '<button data-pid2="'+x.id+'" class="btn-del-pago" style="background:var(--red-light);border:none;color:var(--red);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">&#128465;</button>';
+      html += '<button data-pid2="'+x.id+'" data-saldo="'+saldo+'" class="btn-edit-pago" style="background:var(--bg3);border:1px solid var(--border2);color:var(--muted);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">&#9998;</button>';
+      html += '</div></div>';
     });
   }
   html += '<div style="height:8px"></div><button class="btn btn-ghost" id="btn-edit-prov-det">Editar proveedor</button>';
   body.innerHTML = html;
   openSheet(p.nombre||'Proveedor', body);
   document.getElementById('btn-edit-prov-det').addEventListener('click', () => formProveedor(proveedorId));
+  body.querySelectorAll('.btn-del-cargo').forEach(btn => {
+    btn.addEventListener('click', () => pedirNIP(() => {
+      const cid = btn.dataset.cid;
+      localStorage.setItem('cargosProveedor', JSON.stringify(DB.get('cargosProveedor').filter(x => x.id !== cid)));
+      if (typeof firebase !== 'undefined') firebase.firestore().collection('cargosProveedor').doc(cid).delete().catch(()=>{});
+      closeSheet(); setTimeout(() => detalleProv(proveedorId), 100);
+    }));
+  });
+  body.querySelectorAll('.btn-edit-pago').forEach(btn => {
+    btn.addEventListener('click', () => formPagoProv(proveedorId, Number(btn.dataset.saldo), btn.dataset.pid2));
+  });
+  body.querySelectorAll('.btn-del-pago').forEach(btn => {
+    btn.addEventListener('click', () => pedirNIP(() => {
+      const pid = btn.dataset.pid2;
+      localStorage.setItem('pagosProveedor', JSON.stringify(DB.get('pagosProveedor').filter(x => x.id !== pid)));
+      if (typeof firebase !== 'undefined') firebase.firestore().collection('pagosProveedor').doc(pid).delete().catch(()=>{});
+      closeSheet(); setTimeout(() => detalleProv(proveedorId), 100);
+    }));
+  });
 };
 function htmlGastosMensuales() {
   const gastos = DB.get('gastos').slice().reverse();
